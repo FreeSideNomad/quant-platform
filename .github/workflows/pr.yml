@@ -1,0 +1,171 @@
+name: PR checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: pr-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.5.11"
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22.11"
+
+jobs:
+  # -------------------------------------------------
+  # Python: lint, format, type, unit tests
+  # -------------------------------------------------
+  api-static:
+    name: api · ruff + pyright + unit tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "apps/api/uv.lock"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install deps
+        run: uv sync --all-extras --frozen || uv sync --all-extras
+
+      - name: Ruff (lint)
+        run: uv run ruff check --output-format=github .
+
+      - name: Ruff (format check)
+        run: uv run ruff format --check .
+
+      - name: Pyright
+        run: uv run pyright
+
+      - name: Unit tests
+        env:
+          DATABASE_URL: postgresql+asyncpg://quant:test@localhost/quant
+          SESSION_JWT_SIGNING_KEY: test-key-not-for-production
+        run: uv run pytest -m unit -q --cov=app --cov-report=term
+
+  # -------------------------------------------------
+  # Python integration tests: real Postgres via docker-compose
+  # -------------------------------------------------
+  api-integration:
+    name: api · integration tests (docker-compose)
+    runs-on: ubuntu-latest
+    needs: api-static
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: "apps/api/uv.lock"
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install deps
+        working-directory: apps/api
+        run: uv sync --all-extras --frozen || uv sync --all-extras
+
+      - name: Bring up stack
+        run: docker compose --profile local up -d postgres mock-oidc minio mlflow
+
+      - name: Wait for Postgres
+        run: |
+          for i in {1..30}; do
+            if docker compose exec -T postgres pg_isready -U quant -d quant >/dev/null 2>&1; then
+              echo "postgres ready"; exit 0
+            fi
+            sleep 2
+          done
+          echo "postgres did not become ready" >&2; exit 1
+
+      - name: Migrate
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql+asyncpg://quant:quant@localhost:5433/quant
+          SESSION_JWT_SIGNING_KEY: test-key-not-for-production
+        run: uv run alembic upgrade head
+
+      - name: Integration tests
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql+asyncpg://quant:quant@localhost:5433/quant
+          SESSION_JWT_SIGNING_KEY: test-key-not-for-production
+        run: uv run pytest -m integration -q
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Tear down
+        if: always()
+        run: docker compose --profile local down -v
+
+  # -------------------------------------------------
+  # Frontend: lint, typecheck, unit tests, build
+  # -------------------------------------------------
+  web-static:
+    name: web · typecheck + vitest + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile || pnpm install
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  # -------------------------------------------------
+  # Build container image (no push on PR)
+  # -------------------------------------------------
+  image-build:
+    name: image · build
+    runs-on: ubuntu-latest
+    needs: [api-static, web-static]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/api
+          push: false
+          platforms: linux/amd64
+          tags: quant-platform:pr-${{ github.event.pull_request.number || 'main' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

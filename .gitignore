@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# uv
+.uv-cache/
+
+# Node
+node_modules/
+.pnpm-store/
+.pnpm-state/
+dist/
+.vite/
+
+# Local secrets
+.env
+.env.local
+.env.secrets
+.env.*.local
+
+# Data and artefacts
+data/
+mlflow-artefacts/
+/tmp/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Logs
+*.log
+
+# Test output
+.coverage
+coverage.xml
+htmlcov/
+playwright-report/
+test-results/

@@ -1,0 +1,80 @@
+# Override applied on the dev VM deploy. Does NOT start postgres/minio/mlflow/mock-oidc
+# — those are reused from the existing infra stack on ubuntu-server.local.
+#
+# Usage: docker compose -f docker-compose.yml -f docker-compose.vm.yml up -d
+#
+# Networks: joins the existing `infra` external network for access to infra-postgres.
+
+name: quant-platform
+
+networks:
+  infra:
+    external: true
+    name: infra
+
+services:
+  # Disable local-only services (profiles="local" is not active on VM; these are no-ops).
+  # Pin the api/worker services to infra network and override their URLs.
+
+  api:
+    image: ghcr.io/freesidenomad/quant-platform:${IMAGE_TAG:-main-latest}
+    build: !reset null
+    environment:
+      ROLE: api
+      LOG_LEVEL: INFO
+      DATABASE_URL: postgresql+asyncpg://quant:${QUANT_DB_PASSWORD}@infra-postgres:5432/quant
+      MLFLOW_TRACKING_URI: http://quant-mlflow:5000
+      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:?must provide customer IdP URL on VM}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?}
+      SESSION_JWT_SIGNING_KEY: ${SESSION_JWT_SIGNING_KEY:?}
+    depends_on: !reset []
+    networks:
+      - default
+      - infra
+
+  worker-proj-ui:
+    image: ghcr.io/freesidenomad/quant-platform:${IMAGE_TAG:-main-latest}
+    build: !reset null
+    environment:
+      ROLE: worker-proj-ui
+      LOG_LEVEL: INFO
+      DATABASE_URL: postgresql+asyncpg://quant:${QUANT_DB_PASSWORD}@infra-postgres:5432/quant
+      SESSION_JWT_SIGNING_KEY: ${SESSION_JWT_SIGNING_KEY:?}
+    depends_on: !reset []
+    networks:
+      - default
+      - infra
+
+  scheduler:
+    image: ghcr.io/freesidenomad/quant-platform:${IMAGE_TAG:-main-latest}
+    build: !reset null
+    environment:
+      ROLE: scheduler
+      LOG_LEVEL: INFO
+      DATABASE_URL: postgresql+asyncpg://quant:${QUANT_DB_PASSWORD}@infra-postgres:5432/quant
+      SESSION_JWT_SIGNING_KEY: ${SESSION_JWT_SIGNING_KEY:?}
+    depends_on: !reset []
+    networks:
+      - default
+      - infra
+
+  # MLflow for the VM — separate from local. Points at infra-postgres (different DB).
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.20.0
+    container_name: quant-mlflow
+    profiles: []  # always up on VM
+    environment:
+      AWS_ACCESS_KEY_ID: ${MLFLOW_S3_ACCESS_KEY:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MLFLOW_S3_SECRET_KEY:-minioadmin}
+      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL:-http://infra-minio:9000}
+    command: >
+      mlflow server
+      --host 0.0.0.0 --port 5000
+      --backend-store-uri postgresql+psycopg2://quant:${QUANT_DB_PASSWORD}@infra-postgres:5432/quant
+      --default-artifact-root s3://mlflow-artefacts/
+    ports:
+      - "127.0.0.1:5001:5000"
+    networks:
+      - default
+      - infra
