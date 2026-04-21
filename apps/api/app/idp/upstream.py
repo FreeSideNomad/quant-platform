@@ -30,14 +30,19 @@ _jwks_client: PyJWKClient | None = None
 
 
 def _rewrite_host(url: str, new_base: str) -> str:
-    """Replace the scheme+host+port portion of `url` with `new_base`."""
+    """Prepend `new_base` (scheme+host+optional path) before the URL's path.
+
+    Example: `_rewrite_host("http://mock-oidc:9800/authorize", "https://x.y/mock")`
+    returns `"https://x.y/mock/authorize"`.
+    """
     parsed = urlparse(url)
     base = urlparse(new_base)
+    base_path = base.path.rstrip("/")
     return urlunparse(
         (
             base.scheme or parsed.scheme,
             base.netloc or parsed.netloc,
-            parsed.path,
+            f"{base_path}{parsed.path}",
             "",
             parsed.query,
             "",
