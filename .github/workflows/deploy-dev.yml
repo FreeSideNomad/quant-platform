@@ -24,10 +24,11 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success')
     env:
-      IMAGE: ghcr.io/${{ github.repository }}:${{ inputs.image_tag || 'main-latest' }}
-      COMPOSE_FILE: docker-compose.yml:docker-compose.vm.yml
+      IMAGE: ghcr.io/${{ github.repository_owner }}/quant-platform:${{ inputs.image_tag || 'main-latest' }}
       QUANT_DB_PASSWORD: ${{ secrets.QUANT_DB_PASSWORD }}
       SESSION_JWT_SIGNING_KEY: ${{ secrets.SESSION_JWT_SIGNING_KEY }}
+      BFF_TOKEN_ENCRYPTION_KEY_B64: ${{ secrets.BFF_TOKEN_ENCRYPTION_KEY_B64 }}
+      IDP_CLIENT_SECRET: ${{ secrets.IDP_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v4
 
@@ -42,22 +43,38 @@ jobs:
           docker run --rm \
             -e DATABASE_URL="postgresql+asyncpg://quant:${QUANT_DB_PASSWORD}@infra-postgres:5432/quant" \
             -e SESSION_JWT_SIGNING_KEY="${SESSION_JWT_SIGNING_KEY}" \
+            -e BFF_TOKEN_ENCRYPTION_KEY_B64="${BFF_TOKEN_ENCRYPTION_KEY_B64}" \
             --network infra \
             "$IMAGE" \
             /bin/sh -c "alembic upgrade head"
 
       - name: Compose up
-        run: docker compose -f docker-compose.yml -f docker-compose.vm.yml up -d --remove-orphans
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag || 'main-latest' }}
+        run: |
+          docker compose -p quant-platform \
+            -f docker-compose.yml -f docker-compose.vm.yml \
+            up -d --remove-orphans
 
       - name: Smoke test
         run: |
           for i in {1..30}; do
-            if curl -fsS http://localhost:8000/internal/health; then
-              echo; echo "ok"; exit 0
+            if docker exec quant-platform-api-1 curl -fsS http://localhost:8000/internal/health 2>/dev/null; then
+              echo; echo "api up"
+              break
             fi
             sleep 2
           done
-          docker compose logs --no-color
+          # Public endpoint check — goes through Caddy → BFF → redirect to /auth/login
+          for i in {1..30}; do
+            code=$(curl -sk -o /dev/null -w "%{http_code}" https://quant.ledgertm.com/ || true)
+            if [ "$code" = "302" ] || [ "$code" = "200" ]; then
+              echo "public ok ($code)"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -p quant-platform logs --no-color --tail=50
           exit 1
 
       - name: Log out

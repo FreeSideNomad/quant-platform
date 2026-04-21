@@ -1,9 +1,16 @@
-# Override applied on the dev VM deploy. Does NOT start postgres/minio/mlflow/mock-oidc
-# — those are reused from the existing infra stack on ubuntu-server.local.
+# Production overlay for the Ubuntu VM deploy at quant.ledgertm.com.
 #
-# Usage: docker compose -f docker-compose.yml -f docker-compose.vm.yml up -d
+# Assumes:
+#   - `infra` network exists with infra-postgres (db=quant, db=mlflow) reachable
+#   - ledgertm-caddy is on `infra` and can reverse_proxy by container name
+#   - DNS quant.ledgertm.com → VM IP (Cloudflare CNAME)
 #
-# Networks: joins the existing `infra` external network for access to infra-postgres.
+# Usage (from the deploy workflow):
+#   docker compose -p quant-platform -f docker-compose.yml -f docker-compose.vm.yml up -d
+#
+# Starts the full app stack in a quant-platform compose project. Services
+# keep names like quant-platform-api-1, quant-platform-bff-1, etc. Caddy
+# reverse-proxies from the `infra` network by those container names.
 
 name: quant-platform
 
@@ -12,9 +19,41 @@ networks:
     external: true
     name: infra
 
+# Disable local-only dev containers by pinning profiles so they're ignored.
+# The VM uses infra-postgres for the primary DB (database=quant) and runs its
+# own MinIO + MLflow + mock-OIDC dedicated to the quant platform.
+
 services:
-  # Disable local-only services (profiles="local" is not active on VM; these are no-ops).
-  # Pin the api/worker services to infra network and override their URLs.
+  postgres: { profiles: ["disabled-on-vm"] }
+
+  # MinIO dedicated to the quant-platform artefact/bronze storage.
+  minio:
+    profiles: []
+    ports: !reset []
+    networks: [default, infra]
+
+  minio-init:
+    profiles: []
+    networks: [default, infra]
+
+  # Mock OIDC kept running on the VM for the demo. Swap `OIDC_UPSTREAM_*`
+  # env vars to Google/Entra to retire it.
+  mock-oidc:
+    profiles: []
+    ports: !reset []
+    networks: [default, infra]
+
+  mlflow:
+    profiles: []
+    ports: !reset []
+    command: >
+      mlflow server
+      --host 0.0.0.0 --port 5000
+      --backend-store-uri postgresql+psycopg2://quant:${QUANT_DB_PASSWORD}@infra-postgres:5432/mlflow
+      --default-artifact-root s3://mlflow-artefacts/
+    networks: [default, infra]
+    depends_on: !reset
+      - minio-init
 
   api:
     image: ghcr.io/freesidenomad/quant-platform:${IMAGE_TAG:-main-latest}
@@ -23,15 +62,73 @@ services:
       ROLE: api
       LOG_LEVEL: INFO
       DATABASE_URL: postgresql+asyncpg://quant:${QUANT_DB_PASSWORD}@infra-postgres:5432/quant
-      MLFLOW_TRACKING_URI: http://quant-mlflow:5000
-      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:?must provide customer IdP URL on VM}
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?}
-      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?}
-      SESSION_JWT_SIGNING_KEY: ${SESSION_JWT_SIGNING_KEY:?}
+      STORAGE_BACKEND: minio
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_ACCESS_KEY: minioadmin
+      STORAGE_SECRET_KEY: minioadmin
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      OIDC_UPSTREAM_DISCOVERY_URL: http://mock-oidc:9800/.well-known/openid-configuration
+      OIDC_UPSTREAM_CLIENT_ID: quant-platform
+      OIDC_UPSTREAM_CLIENT_SECRET: mock-secret
+      OIDC_UPSTREAM_NAME: mock
+      OIDC_UPSTREAM_BROWSER_BASE: https://quant.ledgertm.com/mock
+      IDP_ISSUER: https://quant.ledgertm.com/idp
+      IDP_INTERNAL_URL: http://idp:8001
+      IDP_CLIENT_ID: quant-bff
+      IDP_CLIENT_SECRET: ${IDP_CLIENT_SECRET:-dev-bff-secret}
+      BFF_PUBLIC_URL: https://quant.ledgertm.com
+      BFF_UPSTREAM_API_URL: http://api:8000
+      BFF_SESSION_COOKIE_SECURE: "true"
+      BFF_TOKEN_ENCRYPTION_KEY_B64: ${BFF_TOKEN_ENCRYPTION_KEY_B64}
+      SESSION_JWT_SIGNING_KEY: ${SESSION_JWT_SIGNING_KEY}
     depends_on: !reset []
-    networks:
-      - default
-      - infra
+    ports: !reset []
+    networks: [default, infra]
+
+  idp:
+    image: ghcr.io/freesidenomad/quant-platform:${IMAGE_TAG:-main-latest}
+    build: !reset null
+    environment:
+      ROLE: idp
+      LOG_LEVEL: INFO
+      DATABASE_URL: postgresql+asyncpg://quant:${QUANT_DB_PASSWORD}@infra-postgres:5432/quant
+      OIDC_UPSTREAM_DISCOVERY_URL: http://mock-oidc:9800/.well-known/openid-configuration
+      OIDC_UPSTREAM_CLIENT_ID: quant-platform
+      OIDC_UPSTREAM_CLIENT_SECRET: mock-secret
+      OIDC_UPSTREAM_NAME: mock
+      OIDC_UPSTREAM_BROWSER_BASE: https://quant.ledgertm.com/mock
+      IDP_ISSUER: https://quant.ledgertm.com/idp
+      IDP_INTERNAL_URL: http://idp:8001
+      IDP_CLIENT_ID: quant-bff
+      IDP_CLIENT_SECRET: ${IDP_CLIENT_SECRET:-dev-bff-secret}
+      IDP_SIGNING_KEY_ID: qp-prod-1
+      SESSION_JWT_SIGNING_KEY: ${SESSION_JWT_SIGNING_KEY}
+    depends_on: !reset []
+    ports: !reset []
+    networks: [default, infra]
+
+  bff:
+    image: ghcr.io/freesidenomad/quant-platform:${IMAGE_TAG:-main-latest}
+    build: !reset null
+    environment:
+      ROLE: bff
+      LOG_LEVEL: INFO
+      DATABASE_URL: postgresql+asyncpg://quant:${QUANT_DB_PASSWORD}@infra-postgres:5432/quant
+      IDP_ISSUER: https://quant.ledgertm.com/idp
+      IDP_INTERNAL_URL: http://idp:8001
+      IDP_CLIENT_ID: quant-bff
+      IDP_CLIENT_SECRET: ${IDP_CLIENT_SECRET:-dev-bff-secret}
+      BFF_PUBLIC_URL: https://quant.ledgertm.com
+      BFF_UPSTREAM_API_URL: http://api:8000
+      BFF_SESSION_COOKIE_SECURE: "true"
+      BFF_TOKEN_ENCRYPTION_KEY_B64: ${BFF_TOKEN_ENCRYPTION_KEY_B64}
+      SESSION_JWT_SIGNING_KEY: ${SESSION_JWT_SIGNING_KEY}
+    depends_on: !reset []
+    ports: !reset []
+    networks: [default, infra]
 
   worker-proj-ui:
     image: ghcr.io/freesidenomad/quant-platform:${IMAGE_TAG:-main-latest}
@@ -40,11 +137,24 @@ services:
       ROLE: worker-proj-ui
       LOG_LEVEL: INFO
       DATABASE_URL: postgresql+asyncpg://quant:${QUANT_DB_PASSWORD}@infra-postgres:5432/quant
-      SESSION_JWT_SIGNING_KEY: ${SESSION_JWT_SIGNING_KEY:?}
+      SESSION_JWT_SIGNING_KEY: ${SESSION_JWT_SIGNING_KEY}
     depends_on: !reset []
-    networks:
-      - default
-      - infra
+    networks: [default, infra]
+
+  worker-training:
+    image: ghcr.io/freesidenomad/quant-platform:${IMAGE_TAG:-main-latest}
+    build: !reset null
+    environment:
+      ROLE: worker-training
+      LOG_LEVEL: INFO
+      DATABASE_URL: postgresql+asyncpg://quant:${QUANT_DB_PASSWORD}@infra-postgres:5432/quant
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      SESSION_JWT_SIGNING_KEY: ${SESSION_JWT_SIGNING_KEY}
+    depends_on: !reset []
+    networks: [default, infra]
 
   scheduler:
     image: ghcr.io/freesidenomad/quant-platform:${IMAGE_TAG:-main-latest}
@@ -53,28 +163,6 @@ services:
       ROLE: scheduler
       LOG_LEVEL: INFO
       DATABASE_URL: postgresql+asyncpg://quant:${QUANT_DB_PASSWORD}@infra-postgres:5432/quant
-      SESSION_JWT_SIGNING_KEY: ${SESSION_JWT_SIGNING_KEY:?}
+      SESSION_JWT_SIGNING_KEY: ${SESSION_JWT_SIGNING_KEY}
     depends_on: !reset []
-    networks:
-      - default
-      - infra
-
-  # MLflow for the VM — separate from local. Points at infra-postgres (different DB).
-  mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.20.0
-    container_name: quant-mlflow
-    profiles: []  # always up on VM
-    environment:
-      AWS_ACCESS_KEY_ID: ${MLFLOW_S3_ACCESS_KEY:-minioadmin}
-      AWS_SECRET_ACCESS_KEY: ${MLFLOW_S3_SECRET_KEY:-minioadmin}
-      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL:-http://infra-minio:9000}
-    command: >
-      mlflow server
-      --host 0.0.0.0 --port 5000
-      --backend-store-uri postgresql+psycopg2://quant:${QUANT_DB_PASSWORD}@infra-postgres:5432/quant
-      --default-artifact-root s3://mlflow-artefacts/
-    ports:
-      - "127.0.0.1:5001:5000"
-    networks:
-      - default
-      - infra
+    networks: [default, infra]
