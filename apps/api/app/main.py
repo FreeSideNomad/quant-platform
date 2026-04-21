@@ -22,6 +22,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.status import HTTP_404_NOT_FOUND
 
 from app.api.auth import router as auth_router
 from app.api.commands import router as commands_router
@@ -79,15 +80,17 @@ def create_app() -> FastAPI:
 
         # SPA fallback: any 404 on a GET request for a non-API path returns
         # index.html so the client-side router handles it.
+        non_spa_prefixes = ("/api", "/internal", "/auth", "/assets", "/docs", "/openapi")
+
         @application.exception_handler(StarletteHTTPException)
         async def _spa_404_fallback(
             request: Request, exc: StarletteHTTPException
         ) -> JSONResponse | FileResponse:
             path = request.url.path
             if (
-                exc.status_code == 404
+                exc.status_code == HTTP_404_NOT_FOUND
                 and request.method == "GET"
-                and not path.startswith(("/api", "/internal", "/auth", "/assets", "/docs", "/openapi"))
+                and not path.startswith(non_spa_prefixes)
             ):
                 return FileResponse(str(index_html))
             return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
