@@ -79,8 +79,11 @@ jobs:
         working-directory: apps/api
         run: uv sync --all-extras --frozen || uv sync --all-extras
 
+      - name: Build images
+        run: docker compose build mock-oidc mlflow
+
       - name: Bring up stack
-        run: docker compose --profile local up -d postgres mock-oidc minio mlflow
+        run: docker compose up -d
 
       - name: Wait for Postgres
         run: |
@@ -112,7 +115,7 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: docker compose --profile local down -v
+        run: docker compose down -v
 
   # -------------------------------------------------
   # Frontend: lint, typecheck, unit tests, build

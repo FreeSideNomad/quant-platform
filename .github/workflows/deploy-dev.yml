@@ -24,7 +24,6 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success')
     env:
-      IMAGE: ghcr.io/${{ github.repository_owner }}/quant-platform:${{ inputs.image_tag || 'main-latest' }}
       QUANT_DB_PASSWORD: ${{ secrets.QUANT_DB_PASSWORD }}
       SESSION_JWT_SIGNING_KEY: ${{ secrets.SESSION_JWT_SIGNING_KEY }}
       BFF_TOKEN_ENCRYPTION_KEY_B64: ${{ secrets.BFF_TOKEN_ENCRYPTION_KEY_B64 }}
@@ -32,13 +31,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve image ref (lowercase — GHCR requires it)
+        id: image
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          tag="${{ inputs.image_tag || 'main-latest' }}"
+          echo "ref=ghcr.io/${owner}/quant-platform:${tag}" >> "$GITHUB_OUTPUT"
+
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Pull image
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
         run: docker pull "$IMAGE"
 
       - name: Run Alembic migrations
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
         run: |
           docker run --rm \
             -e DATABASE_URL="postgresql+asyncpg://quant:${QUANT_DB_PASSWORD}@infra-postgres:5432/quant" \

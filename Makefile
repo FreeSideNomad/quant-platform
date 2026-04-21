@@ -27,11 +27,11 @@ setup:
 	pnpm install
 
 dev:
-	docker compose --profile local up -d
+	docker compose up -d
 	@echo "Stack up. Postgres @ localhost:5433, MinIO @ :9000, MLflow @ :5000, Mock OIDC @ :9800"
 
 dev-stop:
-	docker compose --profile local down
+	docker compose down
 
 migrate:
 	cd $(API_DIR) && uv run alembic upgrade head
@@ -65,6 +65,6 @@ logs:
 	docker compose logs -f --tail=200
 
 clean:
-	docker compose --profile local down -v
+	docker compose down -v
 	rm -rf $(API_DIR)/.pytest_cache $(API_DIR)/.ruff_cache $(API_DIR)/.mypy_cache
 	rm -rf $(WEB_DIR)/dist $(WEB_DIR)/node_modules/.cache
