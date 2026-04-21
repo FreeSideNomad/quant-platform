@@ -128,10 +128,10 @@ code{{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#f2f2f0
 <p class="sub">Development-only. Two seeded users available.</p>
 <form method="post" action="authorize/submit">
 <input type="hidden" name="request_id" value="{request_id}">
-<label>Username</label>
-<input name="username" autofocus autocomplete="off">
-<label>Password</label>
-<input name="password" type="password" autocomplete="off">
+<label for="username">Username</label>
+<input id="username" name="username" autofocus autocomplete="off">
+<label for="password">Password</label>
+<input id="password" name="password" type="password" autocomplete="off">
 <button type="submit">Sign in</button>
 </form>
 <p class="hint">Try <code>admin / admin</code> or <code>user / user</code>.</p>
