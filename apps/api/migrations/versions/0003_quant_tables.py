@@ -161,6 +161,21 @@ def upgrade() -> None:
         "(SELECT 1 FROM pgmq.list_queues() WHERE queue_name = 'training')"
     )
 
+    # Seed the demo model so integration tests and first-run UI have a row.
+    op.execute(
+        """
+        INSERT INTO models(id, name, description, algorithm, owner_email)
+        VALUES (
+            'qlib-lgbm',
+            'qlib-lgbm',
+            'Minimal Alpha-style momentum/vol/volume model, inspired by Microsoft Qlib Alpha158',
+            'lightgbm',
+            'admin@example.test'
+        )
+        ON CONFLICT (id) DO NOTHING
+        """
+    )
+
 
 def downgrade() -> None:
     op.execute("DROP TABLE IF EXISTS inference_log")
