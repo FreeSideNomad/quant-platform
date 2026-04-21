@@ -126,7 +126,7 @@ code{{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#f2f2f0
 <div class="card">
 <h1>Mock Identity Provider</h1>
 <p class="sub">Development-only. Two seeded users available.</p>
-<form method="post" action="/authorize/submit">
+<form method="post" action="authorize/submit">
 <input type="hidden" name="request_id" value="{request_id}">
 <label>Username</label>
 <input name="username" autofocus autocomplete="off">
