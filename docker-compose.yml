@@ -125,7 +125,7 @@ services:
   api:
     image: ghcr.io/freesidenomad/quant-platform:${IMAGE_TAG:-main-latest}
     build:
-      context: ./apps/api
+      context: .
     environment:
       ROLE: api
       LOG_LEVEL: INFO
@@ -169,7 +169,7 @@ services:
   idp:
     image: ghcr.io/freesidenomad/quant-platform:${IMAGE_TAG:-main-latest}
     build:
-      context: ./apps/api
+      context: .
     environment:
       ROLE: idp
       LOG_LEVEL: INFO
@@ -200,7 +200,7 @@ services:
   bff:
     image: ghcr.io/freesidenomad/quant-platform:${IMAGE_TAG:-main-latest}
     build:
-      context: ./apps/api
+      context: .
     environment:
       ROLE: bff
       LOG_LEVEL: INFO
@@ -231,7 +231,7 @@ services:
   worker-proj-ui:
     image: ghcr.io/freesidenomad/quant-platform:${IMAGE_TAG:-main-latest}
     build:
-      context: ./apps/api
+      context: .
     environment:
       ROLE: worker-proj-ui
       LOG_LEVEL: INFO
@@ -244,7 +244,7 @@ services:
   worker-training:
     image: ghcr.io/freesidenomad/quant-platform:${IMAGE_TAG:-main-latest}
     build:
-      context: ./apps/api
+      context: .
     environment:
       ROLE: worker-training
       LOG_LEVEL: INFO
@@ -263,7 +263,7 @@ services:
   scheduler:
     image: ghcr.io/freesidenomad/quant-platform:${IMAGE_TAG:-main-latest}
     build:
-      context: ./apps/api
+      context: .
     environment:
       ROLE: scheduler
       LOG_LEVEL: INFO

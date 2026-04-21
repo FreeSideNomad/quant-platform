@@ -218,7 +218,8 @@ async def proxy_api(path: str, request: Request, db: AsyncSession = Depends(db))
     if rec.access_expires_at.timestamp() < datetime.now(UTC).timestamp() + 30 and rec.refresh_token:
         await rotate_session_id(db, sid)
 
-    upstream = f"{settings.bff_upstream_api_url}/{path}"
+    # Preserve the /api/ prefix so API routes mounted there match upstream.
+    upstream = f"{settings.bff_upstream_api_url}/api/{path}"
     headers_out = dict(request.headers)
     for h in ("host", "cookie", "content-length"):
         headers_out.pop(h, None)
