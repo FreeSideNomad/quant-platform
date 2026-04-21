@@ -27,7 +27,9 @@ async def _login_admin(client: httpx.AsyncClient) -> str:
     r = await client.get(f"{BFF_URL}/auth/login", params={"return_to": "/auth/me"})
     r = await client.get(r.headers["location"])
     r = await client.get(r.headers["location"])
-    rid = re.search(r'name="request_id"\s+value="([^"]+)"', r.text).group(1)
+    match = re.search(r'name="request_id"\s+value="([^"]+)"', r.text)
+    assert match, "request_id missing from mock form"
+    rid = match.group(1)
     r = await client.post(
         f"{MOCK_URL}/authorize/submit",
         data={"request_id": rid, "username": "admin", "password": "admin"},
