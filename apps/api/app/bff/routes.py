@@ -94,7 +94,10 @@ async def callback(
     )
     hit = row.first()
     if hit is None:
-        raise HTTPException(status_code=400, detail="invalid_state")
+        # Stale/replayed callback URL (back button, refresh of an old tab,
+        # in-flight request that lost its state). Instead of a JSON 400,
+        # kick the user into a fresh login so they actually recover.
+        return RedirectResponse(url="/auth/login", status_code=302)
     code_verifier, return_to = hit
 
     async with httpx.AsyncClient(timeout=15.0) as client:
