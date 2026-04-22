@@ -12,43 +12,36 @@ dependencies = [
     "pydantic>=2.10",
     "pydantic-settings>=2.6",
     "python-multipart>=0.0.20",
-
     # HTTP
     "httpx>=0.28",
-
     # Auth
     "authlib>=1.4",
     "pyjwt[crypto]>=2.10",
-
     # Database
     "asyncpg>=0.30",
     "sqlalchemy[asyncio]>=2.0.36",
     "alembic>=1.14",
-
     # Data
     "polars>=1.19",
     "pandera[polars]>=0.22",
     "pyarrow>=18.1",
-
     # Storage
     "google-cloud-storage>=2.19",  # respects STORAGE_EMULATOR_HOST for MinIO
     "boto3>=1.35",  # alt S3 client for MinIO in some paths
-
     # Observability
     "structlog>=25.1",
     "opentelemetry-api>=1.30",
     "opentelemetry-sdk>=1.30",
     "opentelemetry-instrumentation-fastapi>=0.51b0",
     "opentelemetry-instrumentation-asyncpg>=0.51b0",
-
     # ML
     "mlflow>=2.20",
     "lightgbm>=4.5",
     "numpy>=2.0",
     "scikit-learn>=1.6",
-
     # Scheduling
     "apscheduler>=3.11",
+    "typer>=0.24.1",
 ]
 
 [project.optional-dependencies]
