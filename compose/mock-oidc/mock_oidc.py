@@ -163,7 +163,13 @@ def authorize(
         "code_challenge_method": code_challenge_method,
         "created_at": int(time.time()),
     }
-    return HTMLResponse(_LOGIN_FORM.format(request_id=request_id))
+    # Prevent browser/CDN caching so a revision of the form's action URL is
+    # picked up on the next page load rather than wedging users on a stale
+    # version that posts to the wrong endpoint.
+    return HTMLResponse(
+        _LOGIN_FORM.format(request_id=request_id),
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+    )
 
 
 @app.post("/authorize/submit")
