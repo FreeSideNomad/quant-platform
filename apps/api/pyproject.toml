@@ -46,9 +46,9 @@ dependencies = [
     "apscheduler>=3.11",
     "typer>=0.24.1",
     # Dagster orchestration
-    "dagster>=1.9",
-    "dagster-webserver>=1.9",
-    "dagster-postgres>=0.25",
+    "dagster>=1.9,<2.0",
+    "dagster-webserver>=1.9,<2.0",
+    "dagster-postgres>=0.25,<0.30",
 ]
 
 [project.optional-dependencies]

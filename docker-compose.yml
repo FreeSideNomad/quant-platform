@@ -273,6 +273,83 @@ services:
       postgres:
         condition: service_healthy
 
+  # ------------------------------------------------------------------
+  # Dagster webserver — serves the Dagster UI and GraphQL API.
+  # NO host-published port: Dagster OSS has no built-in auth.
+  # Reachable only via BFF proxy (Task 1.5.3) or API passthrough
+  # (Task 1.5.4) from outside the docker network.
+  # Dagster storage uses the dedicated `dagster` postgres DB to avoid
+  # alembic_version table collisions with the app's own migrations.
+  # ------------------------------------------------------------------
+  dagster-webserver:
+    image: ghcr.io/freesidenomad/quant-platform:${IMAGE_TAG:-main-latest}
+    build:
+      context: .
+    # Named volumes are root-owned; run as root (no host port — internal only).
+    user: "0:0"
+    command:
+      - dagster-webserver
+      - -h
+      - "0.0.0.0"
+      - -p
+      - "3000"
+      - -w
+      - /app/apps/api/workspace.yaml
+    # Override the image-level HEALTHCHECK (which probes 8000/8080/8001 for the
+    # API/BFF/IdP roles). The webserver listens on 3000 only; a GET / returns 200.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/server_info"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+    environment:
+      DAGSTER_HOME: /var/dagster_home
+      DAGSTER_POSTGRES_HOST: postgres
+      DAGSTER_POSTGRES_DB: dagster
+      DAGSTER_POSTGRES_USER: quant
+      DAGSTER_POSTGRES_PASSWORD: quant
+      DATABASE_URL: postgresql+asyncpg://quant:quant@postgres:5432/quant
+    volumes:
+      - dagster_home:/var/dagster_home
+      - ./apps/api/dagster.yaml:/var/dagster_home/dagster.yaml:ro
+      - ./apps/api:/app/apps/api:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ------------------------------------------------------------------
+  # Dagster daemon — runs schedules, sensors, and the run queue.
+  # ------------------------------------------------------------------
+  dagster-daemon:
+    image: ghcr.io/freesidenomad/quant-platform:${IMAGE_TAG:-main-latest}
+    build:
+      context: .
+    user: "0:0"
+    command:
+      - dagster-daemon
+      - run
+      - -w
+      - /app/apps/api/workspace.yaml
+    # The daemon has no HTTP port; disable the image-level healthcheck.
+    healthcheck:
+      disable: true
+    environment:
+      DAGSTER_HOME: /var/dagster_home
+      DAGSTER_POSTGRES_HOST: postgres
+      DAGSTER_POSTGRES_DB: dagster
+      DAGSTER_POSTGRES_USER: quant
+      DAGSTER_POSTGRES_PASSWORD: quant
+      DATABASE_URL: postgresql+asyncpg://quant:quant@postgres:5432/quant
+    volumes:
+      - dagster_home:/var/dagster_home
+      - ./apps/api/dagster.yaml:/var/dagster_home/dagster.yaml:ro
+      - ./apps/api:/app/apps/api:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   pg-data:
   minio-data:
+  dagster_home:
