@@ -93,6 +93,8 @@ class AuditChainCheck:
 
 async def verify_audit_chain(session: AsyncSession) -> AuditChainCheck:
     """Walk the audit_log from genesis and verify each row_hash."""
+    # TODO: stream results (yield_per) once audit_log exceeds ~1M rows.
+    # For MVP-A, materialising the full chain is fine.
     rows = (
         await session.execute(
             text(

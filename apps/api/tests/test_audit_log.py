@@ -17,7 +17,6 @@ async def test_first_event_has_null_prev_hash():
             aggregate_id="csi300_alpha158_v1",
             payload={"family": "csi300_long_short_alpha158"},
         )
-        await session.commit()
 
         row = (
             await session.execute(
@@ -42,7 +41,6 @@ async def test_subsequent_event_chains_to_prior():
             aggregate_id="s1",
             payload={"i": 1},
         )
-        await session.commit()
 
     async with session_scope() as session:
         first_hash = (
@@ -60,7 +58,6 @@ async def test_subsequent_event_chains_to_prior():
             aggregate_id="m1",
             payload={"i": 2},
         )
-        await session.commit()
 
         second_row = (
             await session.execute(
@@ -85,7 +82,6 @@ async def test_verify_audit_chain_passes_when_intact():
                 aggregate_id=f"id{i}",
                 payload={"i": i},
             )
-        await session.commit()
 
     async with session_scope() as session:
         result = await verify_audit_chain(session)
@@ -93,3 +89,75 @@ async def test_verify_audit_chain_passes_when_intact():
     assert result.ok is True
     assert result.checked == 5
     assert result.first_break is None
+
+
+@pytest.mark.integration
+async def test_verify_audit_chain_detects_tampered_payload():
+    """If a stored row's payload is tampered with (bypassing the immutability
+    trigger via session_replication_role=replica), verify_audit_chain reports
+    the break at the tampered row's id."""
+    async with session_scope() as session:
+        ids = []
+        for i in range(3):
+            ids.append(
+                await append_audit_event(
+                    session,
+                    actor="test",
+                    event_type="X",
+                    aggregate_type="Y",
+                    aggregate_id=f"id{i}",
+                    payload={"i": i},
+                )
+            )
+
+    # Tamper the middle row's payload, bypassing the trigger via session_replication_role.
+    # This privilege normally requires superuser; in our local docker-compose Postgres
+    # the `quant` role has it. If this fails in your environment, the test is
+    # skipped — the verify path is the production concern, the tamper is just to set up.
+    async with session_scope() as session:
+        try:
+            await session.execute(text("SET LOCAL session_replication_role = replica"))
+            await session.execute(
+                text("UPDATE audit_log SET payload = '{\"tampered\": true}'::jsonb WHERE id = :id"),
+                {"id": ids[1]},
+            )
+        except Exception as e:  # pragma: no cover
+            pytest.skip(f"Cannot bypass trigger in this environment: {e}")
+
+    async with session_scope() as session:
+        result = await verify_audit_chain(session)
+
+    assert result.ok is False
+    assert result.first_break == ids[1]
+    assert "row_hash mismatch" in (result.detail or "")
+
+
+@pytest.mark.integration
+async def test_verify_audit_chain_handles_unicode_and_nested_payloads():
+    """Roundtrip through JSONB → text → json.loads → json.dumps must preserve
+    the canonical bytes used at insert time, for Unicode strings, nested
+    objects, integers, floats, booleans, and nulls."""
+    payloads = [
+        {"unicode": "日本語のテスト", "emoji": None},
+        {"nested": {"a": [1, 2, 3], "b": {"c": True, "d": False}}},
+        {"numbers": {"int": 42, "float": 3.14159, "big_int": 10**15, "zero": 0}},
+        {"empty_dict": {}, "empty_list": []},
+        {"null": None, "bool_true": True, "bool_false": False},
+    ]
+
+    async with session_scope() as session:
+        for i, p in enumerate(payloads):
+            await append_audit_event(
+                session,
+                actor="test",
+                event_type="X",
+                aggregate_type="Y",
+                aggregate_id=f"p{i}",
+                payload=p,
+            )
+
+    async with session_scope() as session:
+        result = await verify_audit_chain(session)
+
+    assert result.ok is True, f"Chain broken at id={result.first_break}: {result.detail}"
+    assert result.checked == len(payloads)
