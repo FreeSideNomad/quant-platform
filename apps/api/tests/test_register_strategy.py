@@ -95,7 +95,44 @@ async def test_register_strategy_idempotent_on_same_spec_hash(test_client):
 
 @pytest.mark.integration
 async def test_register_strategy_validates_spec_shape(test_client):
-    bad_spec = {"family": "f1", "spec": {"missing": "fields"}, "actor": "x"}
+    bad_spec = {"family": "f1", "spec": {"missing": "fields"}, "actor": "x@example.com"}
     response = await test_client.post("/api/commands/RegisterStrategy", json=bad_spec)
+    assert response.status_code == 422
+
+
+@pytest.mark.integration
+async def test_register_strategy_rejects_oversize_spec(test_client):
+    """A spec larger than 64 KB is rejected with 422."""
+    bloat = {f"{'x' * 50}{i}": "y" * 1000 for i in range(100)}  # ~100 KB
+    spec_with_bloat = {**SAMPLE_SPEC, "bloat": bloat}
+    response = await test_client.post(
+        "/api/commands/RegisterStrategy",
+        json={"family": "f1", "spec": spec_with_bloat, "actor": "morgan@example.com"},
+    )
+    assert response.status_code == 422
+    assert "spec exceeds maximum size" in str(response.json())
+
+
+@pytest.mark.integration
+async def test_register_strategy_rejects_bad_family_chars(test_client):
+    """A family with shell-injection-style chars is rejected."""
+    response = await test_client.post(
+        "/api/commands/RegisterStrategy",
+        json={
+            "family": "../../etc/passwd",
+            "spec": SAMPLE_SPEC,
+            "actor": "morgan@example.com",
+        },
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.integration
+async def test_register_strategy_rejects_bad_actor_email(test_client):
+    """Actor must be a valid email address."""
+    response = await test_client.post(
+        "/api/commands/RegisterStrategy",
+        json={"family": "f1", "spec": SAMPLE_SPEC, "actor": "not-an-email"},
+    )
     assert response.status_code == 422
 

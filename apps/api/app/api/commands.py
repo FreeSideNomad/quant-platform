@@ -7,11 +7,12 @@ end-to-end. The full domain lives under app/domain/.
 from __future__ import annotations
 
 import json as _json
+import re
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import text
 
 from app.api.auth_deps import AuthenticatedUser, get_current_user
@@ -21,6 +22,9 @@ from app.infra.db import session_scope
 from app.infra.pgmq import send as pgmq_send
 
 router = APIRouter()
+
+_FAMILY_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
+_MAX_SPEC_BYTES = 64 * 1024  # 64 KB serialized JSON
 
 
 class PingCommand(BaseModel):
@@ -64,9 +68,28 @@ async def ping(
 
 
 class RegisterStrategyRequest(BaseModel):
-    family: str
+    family: str = Field(min_length=1, max_length=64)
     spec: dict
-    actor: str
+    actor: EmailStr  # constrained to valid email; max 254 chars implicit
+
+    @field_validator("family")
+    @classmethod
+    def _family_pattern(cls, v: str) -> str:
+        if not _FAMILY_PATTERN.match(v):
+            raise ValueError(
+                "family must start with a letter and contain only letters, "
+                "digits, underscore, or hyphen"
+            )
+        return v
+
+    @field_validator("spec")
+    @classmethod
+    def _spec_size(cls, v: dict) -> dict:
+        if len(_json.dumps(v)) > _MAX_SPEC_BYTES:
+            raise ValueError(
+                f"spec exceeds maximum size of {_MAX_SPEC_BYTES} bytes"
+            )
+        return v
 
 
 class RegisterStrategyResponse(BaseModel):
