@@ -16,7 +16,6 @@ from sqlalchemy import text
 
 from app.api.auth_deps import AuthenticatedUser, get_current_user
 from app.audit.log import append_audit_event
-from app.dagster_defs.strategy_codegen import write_strategy_asset_file
 from app.domain.strategy import StrategySpec, new_strategy_id
 from app.infra.db import session_scope
 from app.infra.pgmq import send as pgmq_send
@@ -83,8 +82,8 @@ class RegisterStrategyResponse(BaseModel):
     responses={200: {"model": RegisterStrategyResponse}},
 )
 async def register_strategy(req: RegisterStrategyRequest):
-    """Persist a strategy spec, emit a StrategyRegistered audit event, and
-    write a per-strategy Dagster asset module. Idempotent on (family, spec_hash)."""
+    """Persist a strategy spec and emit a StrategyRegistered audit event.
+    Idempotent on (family, spec_hash)."""
     try:
         spec = StrategySpec.from_dict(req.spec)
     except (KeyError, TypeError, ValueError) as exc:
@@ -131,11 +130,6 @@ async def register_strategy(req: RegisterStrategyRequest):
             aggregate_type="Strategy",
             aggregate_id=strategy_id,
             payload={"family": req.family, "spec_hash": spec_hash},
-        )
-        # Drop the per-strategy Dagster asset file. Dagster's
-        # code-locations mechanism reloads strategies/ on file change.
-        write_strategy_asset_file(
-            strategy_id=strategy_id, family=req.family, spec=spec, spec_hash=spec_hash,
         )
         await session.commit()
 
