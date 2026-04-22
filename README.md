@@ -1,18 +1,18 @@
 # Quant Platform
 
-Reference implementation of the Quant Platform Blueprint. A single Docker image, multiple roles, deployed to the dev VM via a self-hosted GitHub Actions runner.
+Reference implementation of the Quant Platform Blueprint. A single Docker image, multiple roles, deployed to the dev VM via a self-hosted GitHub Actions runner. Dagster provides software-defined-asset orchestration over the medallion data layer and the training pipeline.
 
 ## Quick start (local, Mac)
 
 ```bash
 make setup      # install Python + Node dependencies, pull images
-make dev        # bring up docker-compose stack (postgres, minio, mlflow, mock-oidc)
+make dev        # bring up docker-compose stack (postgres, minio, mlflow, mock-oidc, dagster)
 make migrate    # apply Alembic migrations
 make seed       # seed tenants, users, sample data
 make run        # start the API role locally with hot reload
 ```
 
-Open <http://localhost:8000/health> to verify.
+Open <http://localhost:8000/health> to verify. Dagster's UI is available at <http://localhost:3000> after `make dev`; it shares the same Postgres for run storage.
 
 ## Repository shape
 
@@ -21,7 +21,7 @@ quant-platform/
 ├── apps/
 │   ├── api/          # Python FastAPI + workers (single image source)
 │   └── web/          # React 19 + Vite + TanStack Router frontend
-├── compose/          # docker-compose service configs (mock OIDC, postgres init, caddy)
+├── compose/          # docker-compose service configs (mock OIDC, postgres init, caddy, dagster webserver + daemon)
 ├── migrations/       # Alembic schema versions (under apps/api/migrations)
 ├── scripts/          # Developer and ops scripts
 ├── .github/workflows # PR checks + deploy workflows

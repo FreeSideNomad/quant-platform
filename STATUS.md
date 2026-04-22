@@ -27,6 +27,8 @@ Single Docker image, multiple roles:
 | `worker-proj-ui` | UI read-model projector off PGMQ |
 | `worker-training` | Picks up training jobs from PGMQ, runs LightGBM, registers in MLflow |
 | `scheduler` | APScheduler daemon |
+| `dagster-webserver` | Dagster UI + GraphQL API, exposed on port 3000 locally, proxied read-only via BFF at `/dagster/*` |
+| `dagster-daemon` | Dagster schedules, sensors, and run-coordinator |
 
 ### Auth stack
 
@@ -87,6 +89,14 @@ docker compose --profile local exec -T postgres psql -U quant -d quant -c \
 ```
 
 Log in as `admin/admin`. Submit a training run from the Models page. Run inference.
+
+## What's planned for v1
+
+- **Dagster orchestration** — next architectural milestone. Add `dagster-webserver` and `dagster-daemon` roles to the single image. Run storage backed by the existing Postgres (no new database). Asset definitions covering medallion bronze/silver/gold, dynamic assets for `training_run` and `model_version` per strategy, asset checks acting as validation gates between layers. UI exposed read-only through the BFF at `/dagster/*`; locally on port 3000.
+
+## Recent decisions
+
+- **2026-04-21** — Dagster un-deferred from blueprint Ch.15 deferred-components list; chosen as the v1 pipeline orchestrator (open-source, run storage in existing Postgres, no new infra). See `blueprint/positioning/2026-04-21-positioning.md` §3 anti-positioning for the rationale.
 
 ## What's not yet done
 
