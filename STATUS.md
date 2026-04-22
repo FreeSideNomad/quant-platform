@@ -46,13 +46,17 @@ Single Docker image, multiple roles:
 - Silver: `daily_prices_silver` — bi-temporal `knowable_at` + `source_uri`
 - Gold: `features_gold` — Alpha-style momentum/vol/volume features + forward 1-day return target, `knowable_at` backdated to trade_date EOD
 
-### ML pipeline (Qlib-inspired)
+### ML pipeline (Qlib-style cross-sectional alpha workflow)
 
-- Synthetic OHLCV generator (deterministic, 5 instruments × ~2y)
-- Feature set: `mom_5`, `mom_20`, `vol_20`, `return_mean_20`, `hl_range`, `vol_ratio_20`
+The MVP-A demo workload is a Qlib-style cross-sectional alpha pipeline on a **synthetic universe** — not actual Qlib data. The original PRD specified CSI 300 daily bars, Alpha158 (158 hand-engineered expressions), Alpha360 (360-dimensional raw OHLCV reshape), and advanced Transformer models. That scope is deferred to post-MVP-A. What is built:
+
+- Synthetic OHLCV generator (deterministic, instruments `QPX.A`–`QPX.E`, approximately two years of daily bars)
+- Feature set: six Polars rolling features — `mom_5`, `mom_20`, `vol_20`, `return_mean_20`, `hl_range`, `vol_ratio_20`
 - Training: LightGBM with time-ordered train/val split, early stopping, MLflow experiment tracking
 - Model registry: MLflow 3.1 via the `register_model` path (model version `qlib-lgbm/1`)
 - Inference: `/api/serving/qlib-lgbm/predict` with feature hash + latency_ms + inference_log audit row
+
+CSI 300 ingestion, Alpha158/Alpha360 feature transformations, LSTM baseline, and Transformer models are the first post-MVP-A milestones. Swapping the bronze loader from synthetic to real CSI 300 bars is a single function change; the silver/gold contract, training worker, and serving path are compatible.
 
 ### Frontend
 
@@ -94,6 +98,14 @@ Log in as `admin/admin`. Submit a training run from the Models page. Run inferen
 
 - **Dagster orchestration** — next architectural milestone. Add `dagster-webserver` and `dagster-daemon` roles to the single image. Run storage backed by the existing Postgres (no new database). Asset definitions covering medallion bronze/silver/gold, dynamic assets for `training_run` and `model_version` per strategy, asset checks acting as validation gates between layers. UI exposed read-only through the BFF at `/dagster/*`; locally on port 3000.
 
+## Multi-tenancy scope
+
+Multi-tenancy is implemented at the **deployment layer only**. Each tenant receives a dedicated GCP project with its own Cloud SQL instance; no two tenants share a database. The application code has no `tenant_id` column on any table and no scoped queries — it assumes its database serves exactly one tenant. If that infrastructure constraint were ever violated (for example, a misconfigured BYOC deployment where two tenants pointed at the same Postgres), data would be co-mingled because the application has no tenancy guard at the query layer.
+
+Production deployment must enforce one-tenant-per-database at the infrastructure layer. Application-layer tenancy enforcement (tenant_id columns, scoped SELECTs, row-level security) is post-MVP-A work if a customer configuration ever requires it.
+
+See `blueprint/src/02-key-ideas.md` §1 for the full scope-of-isolation note.
+
 ## Recent decisions
 
 - **2026-04-21** — Dagster un-deferred from blueprint Ch.15 deferred-components list; chosen as the v1 pipeline orchestrator (open-source, run storage in existing Postgres, no new infra). See `blueprint/positioning/2026-04-21-positioning.md` §3 anti-positioning for the rationale.
@@ -114,3 +126,32 @@ Log in as `admin/admin`. Submit a training run from the Models page. Run inferen
 | MLflow | docker-compose, v3.1, Postgres-backed | TBD | Cloud Run per tenant |
 | Runner | n/a | `vm-runner-quant` (live) | GitHub-hosted + WIF |
 | Cookies | `qp_session` (no Secure) | `qp_session` (no Secure) | `__Host-qp_session` (Secure) |
+
+## Decisions in retrospect
+
+- **Dagster un-deferral (2026-04-22 review).** Adding Dagster mid-MVP-A
+  was costly relative to the demo gains it produced: it required ~1500
+  lines of plan addition, BFF reverse proxy with WebSocket bridging, API
+  Bearer-JWT GraphQL passthrough, separate Postgres database for run
+  storage, healthcheck overrides, and a per-strategy codegen pattern that
+  was subsequently removed (see fix/honest-hardening F0) for being a
+  fragile RCE surface. The medallion (bronze/silver/gold) and
+  walk-forward Dagster assets remain because they are stable, generic,
+  and provide real lineage value. A fresh-start MVP-A would skip Dagster
+  until a customer pipeline justified it.
+
+- **Per-strategy Dagster codegen (removed in fix/honest-hardening F0).**
+  Generated Python files on disk that Dagster watched: an unnecessarily
+  complex pattern with code-on-disk-from-user-input as the worst aspect.
+  Strategies live in the database; the training worker reads from there.
+
+- **`/tmp/bronze_cache.parquet` (fixed in fix/honest-hardening F1).**
+  Original implementation used a hardcoded shared path — race condition
+  under concurrent materialization. Now uses a per-run UUID-keyed path
+  passed via Dagster's MaterializeResult metadata.
+
+- **MLflow Stages vs. Aliases (fixed in fix/honest-hardening F2).** The
+  SDK design committed to MLflow Aliases (the supported primitive since
+  MLflow 2.9). The promotion gate originally wrote `model_versions.stage`
+  directly without touching MLflow. Now calls
+  `MlflowClient.set_registered_model_alias` on successful promotion.
