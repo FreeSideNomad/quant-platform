@@ -22,7 +22,10 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.36",
     "alembic>=1.14",
     # Data
-    "polars>=1.19",
+    # polars-lts-cpu is the AVX-only build; standard polars wheels require
+    # AVX2+BMI2+MOVBE which the dev VM's CPU doesn't have (SIGILL on import
+    # in any code path that exercises the Rust engine).
+    "polars-lts-cpu>=1.19",
     "pandera[polars]>=0.22",
     "pyarrow>=18.1",
     # Storage
@@ -42,6 +45,10 @@ dependencies = [
     # Scheduling
     "apscheduler>=3.11",
     "typer>=0.24.1",
+    # Dagster orchestration
+    "dagster>=1.9",
+    "dagster-webserver>=1.9",
+    "dagster-postgres>=0.25",
 ]
 
 [project.optional-dependencies]
