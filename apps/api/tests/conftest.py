@@ -227,3 +227,16 @@ async def quant_session_cookie(bff_base_url: str) -> str:
         email="quant-ws@test.local",
         name="Test Quant WS",
     )
+
+
+@pytest.fixture
+async def test_client(api_base_url: str):
+    """Generic unauthenticated AsyncClient targeting the API role directly.
+
+    Used by command-handler integration tests (e.g. RegisterStrategy) that
+    do not require Bearer auth on the endpoint under test.
+    """
+    import httpx
+
+    async with httpx.AsyncClient(base_url=api_base_url) as client:
+        yield client
