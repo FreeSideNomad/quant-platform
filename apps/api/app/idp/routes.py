@@ -157,7 +157,10 @@ async def upstream_callback(
     )
     hit = row.first()
     if hit is None:
-        raise HTTPException(status_code=400, detail="invalid_state")
+        # Stale/replayed callback from the upstream (back button, refresh
+        # of a completed tab). Send the browser home so the SPA can kick
+        # off a fresh login rather than returning a JSON error page.
+        return RedirectResponse(url="/", status_code=302)
     code_verifier, return_to_payload = hit
     rt = json.loads(return_to_payload)
 
