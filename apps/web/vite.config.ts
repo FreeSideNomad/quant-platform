@@ -25,5 +25,8 @@ export default defineConfig({
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['node_modules', 'dist', 'tests/e2e/**'],
   },
-  base: process.env.VITE_BASE_PATH ?? './',
+  // Absolute base: deep links (/models/qlib-lgbm) must still load assets
+  // from /assets/*, not /models/assets/* (which would hit the SPA fallback
+  // and serve HTML-as-JS, leaving the app un-hydrated).
+  base: process.env.VITE_BASE_PATH ?? '/',
 });
