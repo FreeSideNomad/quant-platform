@@ -62,9 +62,13 @@ jobs:
         env:
           IMAGE_TAG: ${{ inputs.image_tag || 'main-latest' }}
         run: |
+          # --build rebuilds services that compose builds locally (mock-oidc,
+          # mlflow) so source changes to those images actually land on deploy.
+          # The main app image is pulled from GHCR so --build is a no-op for
+          # services with `image:` rather than `build:`.
           docker compose -p quant-platform \
             -f docker-compose.yml -f docker-compose.vm.yml \
-            up -d --remove-orphans
+            up -d --build --remove-orphans
 
       - name: Smoke test
         run: |
