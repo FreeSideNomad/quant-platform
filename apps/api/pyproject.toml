@@ -22,11 +22,13 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.36",
     "alembic>=1.14",
     # Data
-    # Use standard polars wheels (require AVX2+BMI2 which the dev host supports).
-    # polars-lts-cpu was removed because pandera[polars] also pulls in polars,
-    # causing a version mismatch (lts-cpu 1.33.x vs polars 1.40.x).
-    "polars>=1.19",
-    "pandera[polars]>=0.22",
+    # polars-lts-cpu is the AVX-only build; standard polars wheels require
+    # AVX2+BMI2+MOVBE which the dev VM's CPU doesn't have (SIGILL on import
+    # in any code path that exercises the Rust engine). pandera[polars] was
+    # here originally but pulls in standard polars as a hard dep, which
+    # collides with the lts-cpu variant. Nothing in the app uses pandera —
+    # dropped to keep the env coherent.
+    "polars-lts-cpu>=1.19",
     "pyarrow>=18.1",
     # Storage
     "google-cloud-storage>=2.19",  # respects STORAGE_EMULATOR_HOST for MinIO
