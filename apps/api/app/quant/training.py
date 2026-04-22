@@ -123,11 +123,9 @@ def train_lgbm(
     params: dict[str, Any] | None = None,
     num_boost_round: int = 200,
     artefact_dir: Path | None = None,
+    log_to_mlflow: bool = True,
 ) -> TrainingArtefact:
     import mlflow
-
-    mlflow.set_tracking_uri(get_settings().mlflow_tracking_uri)
-    mlflow.set_experiment("qlib-lgbm")
 
     merged_params = {**DEFAULT_PARAMS, **(params or {})}
 
@@ -141,13 +139,11 @@ def train_lgbm(
 
     dataset_hash = _dataset_hash(df)
 
-    with mlflow.start_run() as run:
-        mlflow.log_params(merged_params)
-        mlflow.log_param("num_boost_round", num_boost_round)
-        mlflow.log_param("dataset_hash", dataset_hash)
-        mlflow.log_param("train_rows", len(y_train))
-        mlflow.log_param("val_rows", len(y_val))
+    # Persist model to disk (always needed, even when not logging to MLflow)
+    directory = artefact_dir or Path(tempfile.mkdtemp(prefix="qp-model-"))
+    model_path = directory / "model.txt"
 
+    def _do_train(run_id: str) -> TrainingArtefact:
         dtrain = lgb.Dataset(x_train, label=y_train)
         dval = lgb.Dataset(x_val, label=y_val, reference=dtrain)
         booster = lgb.train(
@@ -165,7 +161,7 @@ def train_lgbm(
         val_pred = np.asarray(
             booster.predict(x_val, num_iteration=booster.best_iteration), dtype=np.float64
         )
-        metrics = {
+        m = {
             "train_rmse": float(np.sqrt(np.mean((train_pred - y_train) ** 2))),
             "val_rmse": float(np.sqrt(np.mean((val_pred - y_val) ** 2))),
             "val_ic": (
@@ -174,23 +170,34 @@ def train_lgbm(
                 else float("nan")
             ),
         }
-        mlflow.log_metrics({k: v for k, v in metrics.items() if not np.isnan(v)})
-
-        # Persist model
-        directory = artefact_dir or Path(tempfile.mkdtemp(prefix="qp-model-"))
-        model_path = directory / "model.txt"
         booster.save_model(str(model_path))
-        mlflow.log_artifact(str(model_path))
-        mlflow.log_dict(
-            {"feature_columns": feature_cols, "params": merged_params}, "feature_spec.json"
-        )
-
         return TrainingArtefact(
-            mlflow_run_id=run.info.run_id,
-            metrics=metrics,
+            mlflow_run_id=run_id,
+            metrics=m,
             model_path=str(model_path),
             dataset_hash=dataset_hash,
         )
+
+    if log_to_mlflow:
+        mlflow.set_tracking_uri(get_settings().mlflow_tracking_uri)
+        mlflow.set_experiment("qlib-lgbm")
+        with mlflow.start_run() as run:
+            mlflow.log_params(merged_params)
+            mlflow.log_param("num_boost_round", num_boost_round)
+            mlflow.log_param("dataset_hash", dataset_hash)
+            mlflow.log_param("train_rows", len(y_train))
+            mlflow.log_param("val_rows", len(y_val))
+
+            artefact = _do_train(run.info.run_id)
+
+            mlflow.log_metrics({k: v for k, v in artefact.metrics.items() if not np.isnan(v)})
+            mlflow.log_artifact(str(model_path))
+            mlflow.log_dict(
+                {"feature_columns": feature_cols, "params": merged_params}, "feature_spec.json"
+            )
+            return artefact
+    else:
+        return _do_train(run_id="")
 
 
 def register_model_version(
@@ -226,14 +233,192 @@ def export_summary(artefact: TrainingArtefact) -> dict[str, Any]:
 
 __all__ = [
     "DEFAULT_PARAMS",
+    "FoldResult",
     "TrainingArtefact",
+    "WalkForwardArtefact",
+    "_compute_ic",
+    "_compute_sharpe",
     "export_summary",
     "load_training_data",
     "register_model_version",
     "train_lgbm",
+    "train_lgbm_walk_forward",
 ]
 
 
 # Helper for worker/handler to serialise JSON-safely
 def safe_jsonify(obj: Any) -> str:
     return json.dumps(obj, default=str)
+
+
+# ---------------------------------------------------------------------------
+# Walk-forward training
+# ---------------------------------------------------------------------------
+
+from scipy.stats import spearmanr as _spearmanr
+
+from app.infra.db import session_scope as _session_scope  # noqa: E402
+from app.quant.walk_forward import WalkForwardConfig, fold_dates  # noqa: E402
+
+
+@dataclass(frozen=True)
+class FoldResult:
+    index: int
+    train_start: date
+    train_end: date
+    test_start: date
+    test_end: date
+    in_sample_ic: float | None
+    out_of_sample_ic: float
+    out_of_sample_sharpe: float
+
+
+@dataclass(frozen=True)
+class WalkForwardArtefact:
+    training_run_id: str
+    fold_count: int
+    folds: list[FoldResult]
+    aggregate_oos_ic: float
+    aggregate_oos_sharpe: float
+
+
+def _compute_ic(predictions: np.ndarray, actuals: np.ndarray) -> float:
+    """Spearman rank correlation between predictions and actuals."""
+    if len(predictions) < 3:
+        return 0.0
+    rho, _ = _spearmanr(predictions, actuals)
+    return float(rho) if not np.isnan(rho) else 0.0
+
+
+def _compute_sharpe(returns: np.ndarray, periods_per_year: int = 252) -> float:
+    if len(returns) < 2 or returns.std(ddof=1) == 0:
+        return 0.0
+    return float(returns.mean() / returns.std(ddof=1) * np.sqrt(periods_per_year))
+
+
+async def train_lgbm_walk_forward(
+    *,
+    training_run_id: str,
+    wf_config: WalkForwardConfig,
+    as_of: date,
+    params: dict[str, Any] | None = None,
+    instruments: list[str] | None = None,
+) -> WalkForwardArtefact:
+    """Walk-forward train + evaluate; persist per-fold metrics to walk_forward_folds."""
+    # Determine the date bounds of available gold features.
+    async with _session_scope() as session:
+        bounds_row = (
+            await session.execute(
+                text("SELECT min(trade_date), max(trade_date) FROM features_gold")
+            )
+        ).one()
+
+    data_start, data_end_raw = bounds_row[0], bounds_row[1]
+    if data_start is None or data_end_raw is None:
+        raise RuntimeError(
+            "features_gold is empty — seed data before calling train_lgbm_walk_forward"
+        )
+    data_end = min(data_end_raw, as_of)
+
+    folds_list = list(fold_dates(wf_config, data_start=data_start, data_end=data_end))
+
+    fold_results: list[FoldResult] = []
+    feature_cols = list(FEATURE_COLUMNS)
+
+    for fold in folds_list:
+        # Load train and test data inside their own sessions.
+        async with _session_scope() as session:
+            train_df = await load_training_data(
+                session,
+                as_of=as_of,
+                train_start=fold.train_start,
+                train_end=fold.train_end,
+                instruments=instruments,
+            )
+        async with _session_scope() as session:
+            test_df = await load_training_data(
+                session,
+                as_of=as_of,
+                train_start=fold.test_start,
+                train_end=fold.test_end,
+                instruments=instruments,
+            )
+
+        # Combine train+test into one df so train_lgbm can do its own split,
+        # then train with log_to_mlflow=False (per-fold runs not tracked in MLflow).
+        artefact = train_lgbm(
+            train_df,
+            params=params,
+            log_to_mlflow=False,
+        )
+
+        # Load the saved booster to generate OOS predictions on test_df.
+        booster = lgb.Booster(model_file=artefact.model_path)
+        x_test = test_df.select(feature_cols).to_numpy()
+        oos_predictions = np.asarray(
+            booster.predict(x_test, num_iteration=booster.best_iteration), dtype=np.float64
+        )
+        oos_actuals = test_df["target_fwd_1d"].to_numpy()
+
+        oos_ic = _compute_ic(oos_predictions, oos_actuals)
+
+        # Simple long/short signal: top half vs. bottom half by prediction.
+        positions = np.where(oos_predictions >= np.median(oos_predictions), 1.0, -1.0)
+        oos_returns = positions * oos_actuals
+        oos_sharpe = _compute_sharpe(oos_returns)
+
+        fold_results.append(
+            FoldResult(
+                index=fold.index,
+                train_start=fold.train_start,
+                train_end=fold.train_end,
+                test_start=fold.test_start,
+                test_end=fold.test_end,
+                in_sample_ic=None,
+                out_of_sample_ic=oos_ic,
+                out_of_sample_sharpe=oos_sharpe,
+            )
+        )
+
+    # Persist per-fold metrics to the database.
+    async with _session_scope() as session:
+        for f in fold_results:
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO walk_forward_folds
+                        (training_run_id, fold_index, train_start, train_end,
+                         test_start, test_end, in_sample_ic, out_of_sample_ic,
+                         out_of_sample_sharpe, metrics)
+                    VALUES
+                        (:rid, :idx, :ts, :te, :tts, :tte, :is_ic, :oos_ic,
+                         :oos_sharpe, '{}'::jsonb)
+                    ON CONFLICT (training_run_id, fold_index) DO UPDATE SET
+                        out_of_sample_ic = EXCLUDED.out_of_sample_ic,
+                        out_of_sample_sharpe = EXCLUDED.out_of_sample_sharpe
+                    """
+                ),
+                {
+                    "rid": training_run_id,
+                    "idx": f.index,
+                    "ts": f.train_start,
+                    "te": f.train_end,
+                    "tts": f.test_start,
+                    "tte": f.test_end,
+                    "is_ic": f.in_sample_ic,
+                    "oos_ic": f.out_of_sample_ic,
+                    "oos_sharpe": f.out_of_sample_sharpe,
+                },
+            )
+        await session.commit()
+
+    aggregate_ic = float(np.mean([f.out_of_sample_ic for f in fold_results]))
+    aggregate_sharpe = float(np.mean([f.out_of_sample_sharpe for f in fold_results]))
+
+    return WalkForwardArtefact(
+        training_run_id=training_run_id,
+        fold_count=len(fold_results),
+        folds=fold_results,
+        aggregate_oos_ic=aggregate_ic,
+        aggregate_oos_sharpe=aggregate_sharpe,
+    )
