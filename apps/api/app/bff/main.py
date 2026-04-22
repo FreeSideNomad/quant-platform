@@ -9,6 +9,7 @@ from fastapi import FastAPI
 
 from app.bff.dagster_proxy import router as dagster_proxy_router
 from app.bff.routes import router as bff_router
+from app.bff.security_headers import SecurityHeadersMiddleware
 from app.infra.db import dispose_engine
 from app.infra.logging import configure_logging, get_logger
 
@@ -27,6 +28,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     application = FastAPI(title="Quant Platform BFF", version="0.0.0", lifespan=lifespan)
+    application.add_middleware(SecurityHeadersMiddleware)
     # dagster_proxy_router MUST be registered before bff_router: the bff_router
     # contains a /{path:path} catch-all that would otherwise swallow /dagster/* routes.
     application.include_router(dagster_proxy_router)
