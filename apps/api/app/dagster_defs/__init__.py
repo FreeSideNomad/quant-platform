@@ -15,6 +15,7 @@ from app.dagster_defs.assets import (
     pit_integrity_check,
     silver_pit_prices,
 )
+from app.dagster_defs.assets.walk_forward import walk_forward_fold_results
 from app.dagster_defs.strategies import all_strategy_assets
 
 defs = Definitions(
@@ -22,6 +23,7 @@ defs = Definitions(
         bronze_synthetic_universe,
         silver_pit_prices,
         gold_alpha_features,
+        walk_forward_fold_results,
         *all_strategy_assets(),
     ],
     asset_checks=[pit_integrity_check, gold_row_count_check],
