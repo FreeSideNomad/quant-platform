@@ -416,7 +416,8 @@ async def promote_model_version(
             await session.execute(
                 text(
                     """
-                    SELECT pbo, dsr_probability, walk_forward_fold_count, stage
+                    SELECT pbo, dsr_probability, walk_forward_fold_count, stage,
+                           mlflow_model_version
                     FROM model_versions
                     WHERE model_id = :m AND version = :v
                     """
@@ -507,6 +508,27 @@ async def promote_model_version(
             },
         )
         await session.commit()
+
+    # Best-effort: mirror the promotion to MLflow as a registered-model alias.
+    # Local model_versions.stage is the operational source of truth; MLflow is
+    # the registry-side mirror.  Failures are logged but do not roll back the
+    # local promotion.
+    mlflow_version = row.mlflow_model_version
+    try:
+        import mlflow  # noqa: F401 — ensure tracking URI is picked up from env
+        from mlflow.tracking import MlflowClient
+
+        if mlflow_version:
+            client = MlflowClient()
+            client.set_registered_model_alias(
+                name=model_id,
+                alias="production",
+                version=str(mlflow_version),
+            )
+    except Exception as exc:
+        log.warning(
+            "MLflow alias update failed for %s/%s: %s", model_id, version, exc
+        )
 
     return {
         "model_id": model_id,

@@ -1,6 +1,7 @@
 """Integration tests for PATCH /api/models/{model_id}/versions/{version}/promote."""
 
 import pytest
+from unittest.mock import MagicMock, patch
 from sqlalchemy import text
 
 from app.infra.db import session_scope
@@ -52,14 +53,15 @@ async def _seed_versions():
                 """
                 INSERT INTO model_versions
                     (id, model_id, version, stage, training_run_id,
-                     pbo, dsr_probability, walk_forward_fold_count)
+                     pbo, dsr_probability, walk_forward_fold_count,
+                     mlflow_model_version)
                 VALUES
                     (:vid1, 'qlib-lgbm', 'good-v1', 'draft', :rid1,
-                     0.3, 0.95, 12),
+                     0.3, 0.95, 12, 'mlf-1'),
                     (:vid2, 'qlib-lgbm', 'overfit-v1', 'draft', :rid2,
-                     0.85, 0.4, 12),
+                     0.85, 0.4, 12, NULL),
                     (:vid3, 'qlib-lgbm', 'too-few-folds', 'draft', :rid3,
-                     0.2, 0.99, 3)
+                     0.2, 0.99, 3, NULL)
                 """
             ),
             {
@@ -152,3 +154,33 @@ async def test_promote_emits_audit_event(test_client):
     assert events[0].payload["model_id"] == "qlib-lgbm"
     assert events[0].payload["version"] == "good-v1"
     assert events[0].payload["reason"] == "ok"
+
+
+@pytest.mark.integration
+async def test_promote_sets_mlflow_production_alias():
+    """The promotion gate also sets the MLflow registered-model 'production' alias.
+
+    Uses an in-process ASGI client so unittest.mock.patch can intercept the
+    MlflowClient instantiated inside promote_model_version.  The DB session
+    still talks to the live Postgres container (same as all other tests).
+    """
+    import httpx
+    from httpx import ASGITransport
+
+    from app.main import app
+
+    mock_client = MagicMock()
+    with patch("mlflow.tracking.MlflowClient", return_value=mock_client):
+        async with httpx.AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as asgi_client:
+            response = await asgi_client.patch(
+                "/api/models/qlib-lgbm/versions/good-v1/promote",
+                json={"actor": "morgan@example.com", "reason": "ok"},
+            )
+        assert response.status_code == 200
+        mock_client.set_registered_model_alias.assert_called_once_with(
+            name="qlib-lgbm",
+            alias="production",
+            version="mlf-1",  # the seeded mlflow_model_version
+        )
