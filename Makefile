@@ -3,7 +3,7 @@ SHELL := /bin/bash
 API_DIR := apps/api
 WEB_DIR := apps/web
 
-.PHONY: help setup dev dev-stop migrate seed run test test-unit test-int test-e2e lint format clean logs
+.PHONY: help setup dev dev-stop migrate seed demo-fresh run test test-unit test-int test-e2e lint format clean logs
 
 help:
 	@echo "Targets:"
@@ -38,6 +38,11 @@ migrate:
 
 seed:
 	cd $(API_DIR) && uv run python -m app.scripts.seed
+
+demo-fresh: dev migrate
+	cd $(API_DIR) && uv run python -m app.scripts.demo_seed
+	@echo "Demo seeded. API: http://localhost:8000/api/queries/pings"
+	@echo "Dagster lineage: http://localhost:3000"
 
 run:
 	cd $(API_DIR) && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

@@ -16,6 +16,7 @@ from app.dagster_defs.assets import (
     silver_pit_prices,
 )
 from app.dagster_defs.assets.walk_forward import walk_forward_fold_results
+from app.dagster_defs.jobs import demo_full_lineage
 from app.dagster_defs.strategies import all_strategy_assets
 
 defs = Definitions(
@@ -27,7 +28,7 @@ defs = Definitions(
         *all_strategy_assets(),
     ],
     asset_checks=[pit_integrity_check, gold_row_count_check],
-    jobs=[],
+    jobs=[demo_full_lineage],
     schedules=[],
     sensors=[],
 )
