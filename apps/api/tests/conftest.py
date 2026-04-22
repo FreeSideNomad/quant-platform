@@ -17,6 +17,17 @@ os.environ.setdefault("BFF_SESSION_COOKIE_SECURE", "false")
 
 
 @pytest.fixture(autouse=True)
+async def clean_audit_log():
+    """Truncate audit_log before each test to prevent row leakage between tests."""
+    from app.infra.db import session_scope
+    from sqlalchemy import text
+
+    async with session_scope() as session:
+        await session.execute(text("TRUNCATE TABLE audit_log RESTART IDENTITY CASCADE"))
+    yield
+
+
+@pytest.fixture(autouse=True)
 async def reset_db_engine():
     """Dispose the global engine after each test.
 

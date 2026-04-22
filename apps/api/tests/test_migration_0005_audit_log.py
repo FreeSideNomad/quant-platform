@@ -4,14 +4,6 @@ from sqlalchemy import text
 from app.infra.db import session_scope
 
 
-@pytest.fixture(autouse=True)
-async def clean_audit_log():
-    """Truncate audit_log before each test to prevent row leakage between tests."""
-    async with session_scope() as session:
-        await session.execute(text("TRUNCATE TABLE audit_log RESTART IDENTITY CASCADE"))
-    yield
-
-
 @pytest.mark.integration
 async def test_audit_log_table_exists():
     """After migration 0005, audit_log table exists with the expected columns."""
