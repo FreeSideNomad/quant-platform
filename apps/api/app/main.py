@@ -26,6 +26,7 @@ from starlette.status import HTTP_404_NOT_FOUND
 
 from app.api.auth import router as auth_router
 from app.api.commands import router as commands_router
+from app.api.dagster_graphql import router as dagster_graphql_router
 from app.api.internal import router as internal_router
 from app.api.models import router as models_router
 from app.api.queries import router as queries_router
@@ -65,6 +66,7 @@ def create_app() -> FastAPI:
     application.include_router(commands_router, prefix="/api/commands", tags=["commands"])
     application.include_router(queries_router, prefix="/api/queries", tags=["queries"])
     application.include_router(models_router, prefix="/api", tags=["models"])
+    application.include_router(dagster_graphql_router)
 
     static_dir = Path(os.environ.get("STATIC_DIR", "/app/static"))
     index_html = static_dir / "index.html"
