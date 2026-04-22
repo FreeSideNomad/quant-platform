@@ -1,7 +1,5 @@
 """Silver layer: PIT-corrected prices with knowable_at."""
 
-from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 from typing import Any, Coroutine, TypeVar
@@ -9,6 +7,8 @@ from typing import Any, Coroutine, TypeVar
 from dagster import (
     AssetCheckResult,
     AssetCheckSeverity,
+    AssetExecutionContext,
+    AssetKey,
     MaterializeResult,
     asset,
     asset_check,
@@ -44,11 +44,18 @@ def _run_async(coro: Coroutine[Any, Any, T]) -> T:
 
 
 @asset(deps=[bronze_synthetic_universe], group_name="data", compute_kind="sql")
-def silver_pit_prices() -> MaterializeResult:
+def silver_pit_prices(context: AssetExecutionContext) -> MaterializeResult:
     """Load the bronze cache into daily_prices_silver with backdate_knowable_at=True."""
+    # Retrieve the cache_key written by the upstream bronze materialization.
+    upstream_event = context.instance.get_latest_materialization_event(
+        AssetKey("bronze_synthetic_universe")
+    )
+    if upstream_event is None or upstream_event.asset_materialization is None:
+        raise RuntimeError("No bronze materialization event found; run bronze first.")
+    cache_key = upstream_event.asset_materialization.metadata["cache_key"].value
 
     async def _run() -> int:
-        bars = await read_bronze_cache()
+        bars = await read_bronze_cache(cache_key)
         async with session_scope() as session:
             await load_bronze_to_silver(session, bars, backdate_knowable_at=True)
             count = (

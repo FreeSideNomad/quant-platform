@@ -5,9 +5,10 @@ Public entry points:
     the silver `daily_prices_silver` table, with bi-temporal `knowable_at`.
   - `build_gold_features(as_of)` — materialise Alpha features and forward
     targets into `features_gold` using data where `knowable_at <= as_of`.
-  - `write_bronze_cache(bars)` — persist the bronze DataFrame to /tmp for
-    cross-process handoff between bronze and silver Dagster assets.
-  - `read_bronze_cache()` — read the persisted bronze DataFrame.
+  - `write_bronze_cache(bars, *, key)` — persist the bronze DataFrame to a
+    per-key path in /tmp for cross-process handoff between bronze and silver
+    Dagster assets.  Returns the Path written.
+  - `read_bronze_cache(key)` — read the persisted bronze DataFrame for `key`.
 
 Feature set — a minimal Alpha-shape signal basket inspired by Qlib's Alpha158
 family. Small enough to be readable, big enough to actually carry signal:
@@ -26,23 +27,31 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, date, datetime, time
 from pathlib import Path
+from typing import Final
 
 import numpy as np
 import polars as pl
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-_BRONZE_CACHE_PATH = Path("/tmp/bronze_cache.parquet")
+_BRONZE_CACHE_DIR: Final[Path] = Path("/tmp")
 
 
-async def write_bronze_cache(bars: pl.DataFrame) -> None:
-    """Persist the bronze frame to a deterministic location for cross-process handoff."""
-    await asyncio.to_thread(bars.write_parquet, _BRONZE_CACHE_PATH)
+def _bronze_cache_path(key: str) -> Path:
+    return _BRONZE_CACHE_DIR / f"bronze_cache_{key}.parquet"
 
 
-async def read_bronze_cache() -> pl.DataFrame:
-    """Read the bronze frame written by write_bronze_cache."""
-    return await asyncio.to_thread(pl.read_parquet, _BRONZE_CACHE_PATH)
+async def write_bronze_cache(bars: pl.DataFrame, *, key: str) -> Path:
+    """Persist bronze frame to a per-key location for cross-process handoff."""
+    path = _bronze_cache_path(key)
+    await asyncio.to_thread(bars.write_parquet, path)
+    return path
+
+
+async def read_bronze_cache(key: str) -> pl.DataFrame:
+    """Read the bronze frame for a given key."""
+    path = _bronze_cache_path(key)
+    return await asyncio.to_thread(pl.read_parquet, path)
 
 
 async def ensure_instruments(session: AsyncSession, instruments: list[str]) -> None:

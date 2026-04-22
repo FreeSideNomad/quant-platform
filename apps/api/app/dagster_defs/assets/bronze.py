@@ -2,6 +2,7 @@
 
 import asyncio
 import concurrent.futures
+import uuid
 from datetime import date
 from typing import Any, Coroutine, TypeVar
 
@@ -50,7 +51,8 @@ def bronze_synthetic_universe(config: BronzeConfig) -> MaterializeResult:
     )
     from app.quant.pipeline import write_bronze_cache
 
-    _run_async(write_bronze_cache(bars))
+    cache_key = uuid.uuid4().hex
+    _run_async(write_bronze_cache(bars, key=cache_key))
 
     return MaterializeResult(
         metadata={
@@ -58,5 +60,6 @@ def bronze_synthetic_universe(config: BronzeConfig) -> MaterializeResult:
             "start": config.start,
             "end": config.end,
             "seed": config.seed,
+            "cache_key": cache_key,
         }
     )

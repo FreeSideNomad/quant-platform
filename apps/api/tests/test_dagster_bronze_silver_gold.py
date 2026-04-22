@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
 from datetime import date
@@ -155,3 +156,28 @@ async def test_pit_integrity_asset_check_catches_future_knowable_at():
     )
     assert pit_check is not None, f"pit_integrity check not found in {[c.check_name for c in check_evals]}"
     assert pit_check.passed, f"pit_integrity check failed with metadata: {pit_check.metadata}"
+
+
+@pytest.mark.integration
+async def test_bronze_cache_isolated_across_concurrent_keys(tmp_path):
+    """Two concurrent bronze materializations with different keys do not collide."""
+    import polars as pl
+
+    from app.quant.pipeline import read_bronze_cache, write_bronze_cache
+
+    df1 = pl.DataFrame({"a": [1, 2, 3]})
+    df2 = pl.DataFrame({"a": [4, 5, 6]})
+
+    key1 = "key1-test"
+    key2 = "key2-test"
+
+    await asyncio.gather(
+        write_bronze_cache(df1, key=key1),
+        write_bronze_cache(df2, key=key2),
+    )
+
+    r1 = await read_bronze_cache(key1)
+    r2 = await read_bronze_cache(key2)
+
+    assert r1["a"].to_list() == [1, 2, 3]
+    assert r2["a"].to_list() == [4, 5, 6]
