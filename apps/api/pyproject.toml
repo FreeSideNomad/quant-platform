@@ -26,7 +26,10 @@ dependencies = [
     "alembic>=1.14",
 
     # Data
-    "polars>=1.19",
+    # polars-lts-cpu is the AVX-only build; standard polars wheels require
+    # AVX2+BMI2+MOVBE which the dev VM's CPU doesn't have (SIGILL on import
+    # in any code path that exercises the Rust engine).
+    "polars-lts-cpu>=1.19",
     "pandera[polars]>=0.22",
     "pyarrow>=18.1",
 
