@@ -38,18 +38,35 @@ async def append_audit_event(
 
     Returns the new row's id. Caller is responsible for `session.commit()`.
 
-    Concurrency: this function takes a row-level lock on the latest
-    row before computing prev_hash to prevent two concurrent appends
-    from chaining to the same prior row. The lock is released on
-    commit/rollback.
+    Concurrency: serialises all appenders through a Postgres
+    advisory transaction-level lock keyed on a fixed namespace
+    constant. Two concurrent appenders queue at the lock; only one
+    holds it at a time; the lock releases at commit/rollback. This
+    is necessary because READ COMMITTED snapshots allow concurrent
+    transactions to read the same "latest row" before either
+    commits, producing duplicate prev_hash values. The earlier
+    `SELECT ... FOR UPDATE` pattern was insufficient — it only
+    protects against modifications to existing rows, not against
+    two transactions both reading the same latest-row state.
     """
+    # Advisory lock keyed on a stable integer namespace for audit_log.
+    # Any value works; using a memorable hex constant for the audit
+    # subsystem. The lock is xact-scoped — released at commit/rollback.
+    AUDIT_LOG_LOCK_KEY = 0xA7D17_106  # "audit log" mnemonic
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(:key)"),
+        {"key": AUDIT_LOG_LOCK_KEY},
+    )
+
+    # Now safe to read the latest row — no other transaction holds
+    # the advisory lock, so we have an exclusive view of what the
+    # tail of the chain is.
     latest = (
         await session.execute(
             text(
                 """
                 SELECT row_hash FROM audit_log
                 ORDER BY id DESC LIMIT 1
-                FOR UPDATE
                 """
             )
         )
