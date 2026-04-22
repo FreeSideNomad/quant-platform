@@ -386,4 +386,139 @@ def _jsonify(obj: Any) -> str:
     return json.dumps(obj, default=str)
 
 
+# --------------------------------------------------------------------
+# Promotion gate
+# --------------------------------------------------------------------
+
+
+class PromoteRequest(BaseModel):
+    actor: str
+    reason: str
+
+
+@router.patch("/models/{model_id}/versions/{version}/promote")
+async def promote_model_version(
+    model_id: str,
+    version: str,
+    req: PromoteRequest,
+) -> dict:
+    """Evaluate PBO/DSR/walk-forward gates and, on pass, transition the version to production.
+
+    Returns 422 with gate_results detail on failure.
+    Archives any prior production version for the same model.
+    Emits a ModelPromoted audit event.
+    """
+    from app.audit.log import append_audit_event
+    from app.quant.validation.gates import evaluate_gates
+
+    async with session_scope() as session:
+        row = (
+            await session.execute(
+                text(
+                    """
+                    SELECT pbo, dsr_probability, walk_forward_fold_count, stage
+                    FROM model_versions
+                    WHERE model_id = :m AND version = :v
+                    """
+                ),
+                {"m": model_id, "v": version},
+            )
+        ).one_or_none()
+
+        if row is None:
+            raise HTTPException(status_code=404, detail="model_version_not_found")
+
+        results = evaluate_gates(
+            pbo=row.pbo,
+            dsr_probability=row.dsr_probability,
+            walk_forward_fold_count=row.walk_forward_fold_count,
+        )
+
+        if not results.all_pass:
+            failure_reasons: list[str] = []
+            if not results.pbo_pass:
+                failure_reasons.append(
+                    f"PBO {row.pbo} > 0.7 threshold"
+                    if row.pbo is not None
+                    else "PBO not computed"
+                )
+            if not results.dsr_pass:
+                failure_reasons.append(
+                    f"DSR probability {row.dsr_probability} < 0.95"
+                    if row.dsr_probability is not None
+                    else "DSR not computed"
+                )
+            if not results.walk_forward_pass:
+                failure_reasons.append(
+                    f"Only {row.walk_forward_fold_count} walk-forward folds; need >= 8"
+                    if row.walk_forward_fold_count is not None
+                    else "Walk-forward fold count not computed"
+                )
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "Promotion blocked: " + "; ".join(failure_reasons),
+                    "gate_results": {
+                        "pbo_pass": results.pbo_pass,
+                        "dsr_pass": results.dsr_pass,
+                        "walk_forward_pass": results.walk_forward_pass,
+                    },
+                },
+            )
+
+        previous_stage = row.stage
+
+        # Promote this version
+        await session.execute(
+            text(
+                """
+                UPDATE model_versions SET stage = 'production', promoted_at = now()
+                WHERE model_id = :m AND version = :v
+                """
+            ),
+            {"m": model_id, "v": version},
+        )
+        # Archive any other production version for this model
+        await session.execute(
+            text(
+                """
+                UPDATE model_versions SET stage = 'archived'
+                WHERE model_id = :m AND version != :v AND stage = 'production'
+                """
+            ),
+            {"m": model_id, "v": version},
+        )
+
+        await append_audit_event(
+            session,
+            actor=req.actor,
+            event_type="ModelPromoted",
+            aggregate_type="ModelVersion",
+            aggregate_id=f"{model_id}/{version}",
+            payload={
+                "model_id": model_id,
+                "version": version,
+                "reason": req.reason,
+                "gate_results": {
+                    "pbo": results.pbo,
+                    "dsr_probability": results.dsr_probability,
+                    "walk_forward_fold_count": results.walk_forward_fold_count,
+                },
+            },
+        )
+        await session.commit()
+
+    return {
+        "model_id": model_id,
+        "version": version,
+        "previous_stage": previous_stage,
+        "new_stage": "production",
+        "gate_results": {
+            "pbo_pass": results.pbo_pass,
+            "dsr_pass": results.dsr_pass,
+            "walk_forward_pass": results.walk_forward_pass,
+        },
+    }
+
+
 __all__ = ["router"]
