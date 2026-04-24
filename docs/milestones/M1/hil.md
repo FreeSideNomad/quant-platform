@@ -36,12 +36,13 @@ Automated tests all green:
 ## Script
 
 1. **Clean-clone test**
-   - On a second working directory (simulates a fresh laptop):
+   - On a second working directory (simulates a fresh laptop). While this HIL runs *before* M1 merges to `main`, the skeleton lives on `feat/m1-skeleton`, so clone with the branch flag:
      ```bash
-     git clone git@github.com:FreeSideNomad/quant-platform.git /tmp/qp-fresh
+     git clone --branch feat/m1-skeleton git@github.com:FreeSideNomad/quant-platform.git /tmp/qp-fresh
      cd /tmp/qp-fresh
      ```
-   - Expected: clone completes without errors.
+     After M1 ships (branch merged to `main`), drop `--branch feat/m1-skeleton`; the HIL can then be re-run against `main` as a regression check.
+   - Expected: clone completes without errors, `git log -1` shows the latest M1 commit.
 
 2. **Install the CLI**
    ```bash
