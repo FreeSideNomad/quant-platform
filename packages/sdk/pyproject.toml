@@ -9,6 +9,8 @@ dependencies = [
   "httpx>=0.27",
   "pydantic>=2.8",
   "polars-lts-cpu>=1.8",
+  "numpy>=2.0",
+  "scipy>=1.14",
 ]
 
 [project.scripts]
@@ -28,4 +30,5 @@ dev = [
   "pytest-cov>=5.0",
   "ruff>=0.7",
   "pyright>=1.1.380",
+  "hypothesis>=6.115",
 ]
