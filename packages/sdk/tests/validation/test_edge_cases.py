@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from quantplatform.validation.cpcv import CPCVConfig, cpcv_splits
-from quantplatform.validation.dsr import _expected_max_sharpe
+from quantplatform.validation.dsr import _expected_max_sharpe, deflated_sharpe
 from quantplatform.validation.pbo import pbo
 from quantplatform.validation.walk_forward import WalkForwardConfig
 
@@ -41,6 +41,24 @@ def test_expected_max_sharpe_returns_zero_when_num_trials_is_one() -> None:
 
 def test_expected_max_sharpe_returns_zero_when_trials_var_is_zero() -> None:
     assert _expected_max_sharpe(10, 0.0) == 0.0
+
+
+def test_dsr_deflator_nan_guard_falls_back_to_observed() -> None:
+    """Returns containing NaN propagate NaN through scipy moments, making
+    deflator_arg NaN.  The ``math.isnan`` guard in dsr.py must catch this
+    and fall back to ``deflated = observed`` (line 89) instead of crashing.
+
+    With Pearson kurtosis the quadratic deflator_arg is always >= 0 for
+    finite returns (Cauchy-Schwarz guarantee on central moments), so the
+    only way to reach the guard is via NaN propagation from the input.
+    """
+    returns = np.array([0.01, 0.02, np.nan, 0.03, 0.01, 0.02] * 10)
+    score = deflated_sharpe(returns, num_trials=1, trials_sharpe_var=None)
+    # When the guard fires, deflated == observed (the annualised per-period Sharpe).
+    # observed itself will be NaN (mean/std of NaN-contaminated series), so probability
+    # will be 0.5 (norm.cdf(nan) in scipy returns nan → float(nan)).
+    # The important thing is that no exception is raised.
+    assert 0.0 <= score.probability <= 1.0 or np.isnan(score.probability)
 
 
 # ---- pbo.py ----

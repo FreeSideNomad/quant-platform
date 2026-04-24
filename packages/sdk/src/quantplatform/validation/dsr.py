@@ -75,7 +75,7 @@ def deflated_sharpe(
     observed = sr_raw * math.sqrt(periods_per_year)
     n = len(returns)
     g3 = float(skew(returns))
-    g4 = float(kurtosis(returns, fisher=True))
+    g4 = float(kurtosis(returns, fisher=False))  # Pearson kurtosis (normal=3) per Bailey 2014 Eq. 7
 
     if num_trials > 1:
         var = trials_sharpe_var if trials_sharpe_var is not None else 1.0

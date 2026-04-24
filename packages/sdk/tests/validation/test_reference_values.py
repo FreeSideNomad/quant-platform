@@ -15,10 +15,10 @@ independent re-implementations of the published formulas:
   strategies perfectly anti-correlated IS↔OS → PBO = 1 exactly).
 
 Implementation notes on DSR formula:
-- The module uses scipy's default bias=True skewness and fisher=True
-  (excess) kurtosis. The deflator formula is:
+- The module uses scipy's default bias=True skewness and fisher=False
+  (Pearson) kurtosis, where normal = 3. The deflator formula is:
     deflator_arg = (1 - g3*sr_raw + (g4-1)/4 * sr_raw^2) / (n-1)
-  where g4 is excess kurtosis (Fisher), g3 is biased skewness.
+  where g4 is Pearson kurtosis (normal=3), g3 is biased skewness.
 - This reduces to the t-stat form:
     t = sr_raw * sqrt(n-1) / sqrt(1 - g3*sr_raw + (g4-1)/4 * sr_raw^2)
   which the tests use for clarity.
@@ -44,8 +44,8 @@ def test_dsr_matches_bailey_formula_at_num_trials_one() -> None:
     scipy primitives and assert deflated_sharpe() matches to 1e-10.
 
     The module computes:
-        g3 = skew(returns)               # bias=True (scipy default)
-        g4 = kurtosis(returns, fisher=True)  # excess kurtosis
+        g3 = skew(returns)                # bias=True (scipy default)
+        g4 = kurtosis(returns, fisher=False)  # Pearson kurtosis (normal=3)
         deflator_arg = (1 - g3*sr_raw + (g4-1)/4 * sr_raw^2) / (n-1)
         deflated = observed / (sqrt(deflator_arg) * sqrt(periods_per_year))
 
@@ -59,8 +59,8 @@ def test_dsr_matches_bailey_formula_at_num_trials_one() -> None:
     # Independent reimplementation matching the module's exact formula:
     sigma = float(returns.std(ddof=1))
     sr_raw = float(returns.mean() / sigma)   # per-period Sharpe
-    g3 = float(skew(returns))               # bias=True to match module
-    g4 = float(kurtosis(returns, fisher=True))  # excess kurtosis to match module
+    g3 = float(skew(returns))                # bias=True to match module
+    g4 = float(kurtosis(returns, fisher=False))  # Pearson kurtosis (normal=3) per Bailey 2014 Eq. 7
 
     numer = 1.0 - g3 * sr_raw + ((g4 - 1.0) / 4.0) * sr_raw ** 2
     assert numer > 0.0, "deflator numerator must be positive for this fixture"
@@ -95,8 +95,8 @@ def test_dsr_matches_bailey_formula_with_multiple_trials() -> None:
     sigma = float(returns.std(ddof=1))
     sr_raw = float(returns.mean() / sigma)
     observed_annual = sr_raw * math.sqrt(252)
-    g3 = float(skew(returns))               # bias=True to match module
-    g4 = float(kurtosis(returns, fisher=True))  # excess kurtosis to match module
+    g3 = float(skew(returns))                # bias=True to match module
+    g4 = float(kurtosis(returns, fisher=False))  # Pearson kurtosis (normal=3) per Bailey 2014 Eq. 7
 
     # Bailey-de Prado expected max Sharpe under multiple testing (annualised):
     euler = 0.5772156649
