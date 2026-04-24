@@ -11,6 +11,10 @@ dependencies = [
   "polars-lts-cpu>=1.8",
   "numpy>=2.0",
   "scipy>=1.14",
+  "lightgbm>=4.5",
+  "mlflow-skinny>=2.16",
+  "jinja2>=3.1",
+  "xxhash>=3.5",
 ]
 
 [project.scripts]
@@ -31,6 +35,7 @@ dev = [
   "ruff>=0.7",
   "pyright>=1.1.380",
   "hypothesis>=6.115",
+  "debugpy>=1.8",
 ]
 
 [tool.pytest.ini_options]
