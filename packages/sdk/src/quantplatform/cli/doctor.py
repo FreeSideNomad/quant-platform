@@ -52,14 +52,25 @@ def _port_is_free(port: int) -> bool:
 
 
 def _stack_is_running() -> bool:
-    """Return True if the local docker-compose stack has any running containers."""
+    """Return True if any pq-* platform container is currently running.
+
+    Detection is by container-name prefix rather than compose project so
+    `pq doctor` can be run from anywhere (including inside a strategy
+    project directory that has no docker-compose.yml of its own).
+    """
     result = subprocess.run(
-        ["docker", "compose", "ps", "-q"],
+        ["docker", "ps", "--filter", "name=pq-", "--format", "{{.Names}}"],
         capture_output=True,
         text=True,
         check=False,
     )
-    return result.returncode == 0 and bool(result.stdout.strip())
+    if result.returncode != 0:
+        return False
+    names = {line.strip() for line in result.stdout.splitlines() if line.strip()}
+    # Treat the stack as running if at least one canonical pq-* long-lived
+    # container is present (one-shot init containers don't count).
+    long_lived = {"pq-postgres", "pq-minio", "pq-mlflow", "pq-mock-oidc", "pq-api", "pq-ui"}
+    return bool(names & long_lived)
 
 
 def _check_ports() -> tuple[bool, str]:
