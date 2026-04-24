@@ -1,0 +1,1 @@
+"""qp CLI entry point."""
