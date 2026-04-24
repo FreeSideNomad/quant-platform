@@ -112,16 +112,37 @@ pyquant-site/
         └── deploy.yml
 ```
 
-### 5. Deployment
+### 5. CI/CD via self-hosted runner on ubuntu-server
 
-GitHub Actions workflow on push to `main`:
+The ubuntu-server already runs a GitHub Actions self-hosted runner (`quant-runner` container, image `myoung34/github-runner:latest`). The pyquant-site deploy uses that runner directly instead of a GitHub-hosted runner + SSH key, because the runner sits on the same host as the Caddy volume and can write to it without any deploy credentials.
 
-1. Checkout + pnpm install (`--frozen-lockfile`).
-2. `pnpm build` → produces `dist/` with all six HTML files + hashed CSS.
-3. `rsync -avz --delete dist/ <deploy-user>@ubuntu-server.local:/srv/pyquant/site/` over SSH using a deploy key in the GitHub repo's secrets.
-4. No Caddy reload — the `file_server` serves updated files on the next request.
+Two workflows in `.github/workflows/`:
 
-The deploy SSH key is a dedicated key (not reusing `igor`'s). On the server, add it to a new user `pyquant-deploy` (or `igor`'s authorized_keys with a `command="rsync --server ..."` restriction) to limit its reach to the target directory.
+**`ci.yml` — validation on every push and pull request (runs on `ubuntu-latest`, the GitHub-hosted free tier):**
+1. Checkout.
+2. Set up pnpm + Node.
+3. `pnpm install --frozen-lockfile`.
+4. `pnpm run lint` (Astro's `astro check` + Prettier check).
+5. `pnpm run build` — verifies the site builds clean.
+6. Upload `dist/` as an artifact for inspection.
+
+Fast, gate-able, doesn't touch production.
+
+**`deploy.yml` — deploy on push to `main` (runs on `self-hosted`):**
+1. Checkout.
+2. `pnpm install --frozen-lockfile` (pnpm cached on the runner host).
+3. `pnpm run build` → `dist/`.
+4. `rsync -a --delete --exclude=media/ dist/ /srv/pyquant/site/` — the runner container must have `/srv/pyquant/site` bind-mounted (see below). `--exclude=media/` preserves the large media files uploaded out-of-band.
+5. No Caddy reload — `file_server` picks up new files on the next request.
+
+Both workflows `concurrency: group: ${{ github.ref }}` + `cancel-in-progress: true` so rapid pushes don't pile up.
+
+**Runner prerequisites on the server (one-time setup — captured as plan tasks):**
+- Register `quant-runner` for the pyquant-site repo (GitHub → repo Settings → Actions → Runners → New self-hosted runner — copy the token into the runner's restart), OR register a second runner scoped to the new repo only.
+- Add `/srv/pyquant/site:/srv/pyquant/site` to the runner container's volume list so it can write to the Caddy serving dir. Requires editing the runner's compose/systemd unit and restarting.
+- Add `rsync` to the runner image (bundled in `myoung34/github-runner:latest`; verify with `docker exec quant-runner which rsync`).
+
+**Why not GitHub-hosted + SSH key?** Simpler security (no key to leak, no `authorized_keys` command restriction to audit), no Bell-upload latency on artifact upload, and it exercises the self-hosted runner that's already paid for. Trade-off: CI workflow still runs on hosted runners to keep validation off the path if the self-hosted runner is down.
 
 ### 6. Media files (NOT committed to git)
 
@@ -214,7 +235,7 @@ Media files aren't in git and aren't re-uploaded on deploy (rsync excludes `publ
 
 - **Upload bandwidth bottleneck on residential Bell for international visitors** → mitigation: keep media files small; consider Cloudflare Stream ($5/mo) later; use `preload="metadata"` so pages don't auto-download the whole media.
 - **Astro / Tailwind v4 upstream churn** → mitigation: pin exact versions in `package.json`; `pnpm-lock.yaml` committed; dependabot can be off for this repo.
-- **Deploy key leakage** → mitigation: scope the key's authorized_keys entry with `command="rsync --server …"` to force it to only rsync into `/srv/pyquant/site/`; no shell, no other paths.
+- **Self-hosted runner compromised** → mitigation: only the pyquant-site repo can dispatch jobs to it; the runner container has bind access only to `/srv/pyquant/site/` (not the whole filesystem); workflow pins actions by SHA rather than tag so a compromised action version can't rewrite history retroactively.
 - **Caddy config typo takes down `pyquant.io`** → mitigation: `caddy validate` (with `--env-file`) before every reload; pre-edit backup is the immediate rollback.
 - **Site copy drifts from the canonical positioning doc** → mitigation: a short comment at the top of each page's `.astro` file pointing to the blueprint section it's derived from; a once-a-quarter check.
 
