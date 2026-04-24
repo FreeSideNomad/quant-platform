@@ -1,1 +1,4 @@
-"""Quant Platform SDK (to be built in M3)."""
+"""Quant Platform SDK — strategy-facing API."""
+from quantplatform.sdk import run
+
+__all__ = ["run"]
