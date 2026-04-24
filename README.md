@@ -8,15 +8,11 @@ Current MVP design: [`docs/superpowers/specs/2026-04-23-quant-mvp-design.md`](./
 
 ## Quick start (planned)
 
+See [docs/INSTALL.md](docs/INSTALL.md) — `uv tool install ./packages/sdk` puts `pq` on `$PATH`.
+
 Once the MVP ships, onboarding is:
 
 ```bash
-# Install the pq CLI (macOS or Linux)
-curl -sSfL https://get.quantplatform.io | sh
-# or
-uv tool install quantplatform
-
-# Scaffold a strategy and run it locally
 pq new strategy hello-world
 cd hello-world
 pq up                    # start the full stack in docker-compose
