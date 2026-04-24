@@ -51,11 +51,24 @@ def _port_is_free(port: int) -> bool:
     return True
 
 
+def _stack_is_running() -> bool:
+    """Return True if the local docker-compose stack has any running containers."""
+    result = subprocess.run(
+        ["docker", "compose", "ps", "-q"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
 def _check_ports() -> tuple[bool, str]:
     busy = [p for p in REQUIRED_PORTS if not _port_is_free(p)]
-    if busy:
-        return False, f"Port {busy[0]} already in use"
-    return True, "All required ports free"
+    if not busy:
+        return True, "All required ports free"
+    if _stack_is_running():
+        return True, f"{len(busy)} port(s) held by running qp stack (expected)"
+    return False, f"Port {busy[0]} already in use"
 
 
 def doctor() -> None:
