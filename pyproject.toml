@@ -1,0 +1,19 @@
+[project]
+name = "quant-platform"
+version = "0.0.0"
+description = "Quant Platform monorepo root"
+requires-python = ">=3.12"
+
+[tool.uv.workspace]
+members = ["apps/api", "packages/sdk"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "ASYNC", "SIM"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
