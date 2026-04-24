@@ -32,3 +32,22 @@ dev = [
   "pyright>=1.1.380",
   "hypothesis>=6.115",
 ]
+
+[tool.pytest.ini_options]
+# When run from packages/sdk, enforce 100% line coverage on validation module.
+# Other modules (cli/) already have their own tests and are excluded here so
+# this gate doesn't fail on unrelated drift.
+addopts = "--cov=quantplatform.validation --cov-report=term-missing --cov-fail-under=100"
+
+[tool.coverage.run]
+branch = false
+source = ["src/quantplatform/validation"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_lines = [
+  "pragma: no cover",
+  "if __name__ == .__main__.:",
+  "raise NotImplementedError",
+]
