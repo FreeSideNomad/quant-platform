@@ -1,4 +1,5 @@
 """Minimal smoke tests for the {{ name }} strategy (run without the compose stack)."""
+
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -33,5 +34,6 @@ def test_target_is_shifted_rv_1d() -> None:
 
 def test_model_is_lightgbm_regressor() -> None:
     import lightgbm as lgb
+
     m = VolHAR().model()
     assert isinstance(m, lgb.LGBMRegressor)
