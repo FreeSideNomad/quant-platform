@@ -1,0 +1,34 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug strategy (host)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "{{ name.replace('-', '_') }}.strategy",
+      "env": {
+        "QP_STRATEGY_ID": "${input:strategyId}",
+        "QP_AS_OF": "${input:asOf}",
+        "DATABASE_URL": "postgresql://qp:qp@localhost:15432/qp",
+        "MLFLOW_TRACKING_URI": "http://localhost:15000",
+        "S3_ENDPOINT_URL": "http://localhost:19000",
+        "S3_ACCESS_KEY": "minioadmin",
+        "S3_SECRET_KEY": "minioadmin"
+      },
+      "justMyCode": false
+    },
+    {
+      "name": "Debug strategy (container)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {"host": "localhost", "port": 5678},
+      "pathMappings": [
+        {"localRoot": "${workspaceFolder}", "remoteRoot": "/workspace"}
+      ]
+    }
+  ],
+  "inputs": [
+    {"id": "strategyId", "type": "promptString", "description": "Strategy UUID (from pq run upsert)"},
+    {"id": "asOf", "type": "promptString", "description": "as_of date (YYYY-MM-DD)"}
+  ]
+}

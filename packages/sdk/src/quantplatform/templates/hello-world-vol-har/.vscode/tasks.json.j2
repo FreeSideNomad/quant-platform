@@ -1,0 +1,8 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {"label": "pq run (host)", "type": "shell", "command": "pq run {{ name }}"},
+    {"label": "pq run (container)", "type": "shell", "command": "pq run {{ name }} --container"},
+    {"label": "pq e2e", "type": "shell", "command": "pq e2e"}
+  ]
+}
