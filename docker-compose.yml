@@ -10,7 +10,7 @@ services:
       - qp-postgres-data:/var/lib/postgresql/data
       - ./compose/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
     ports:
-      - "5432:5432"
+      - "15432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-qp} -d ${POSTGRES_DB:-qp}"]
       interval: 3s
@@ -27,8 +27,8 @@ services:
     volumes:
       - qp-minio-data:/data
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "19000:9000"
+      - "19001:9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
       interval: 3s
@@ -50,7 +50,9 @@ services:
       "
 
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.16.0
+    build:
+      context: ./compose/mlflow
+    image: qp-mlflow:v2.16.0-pg
     container_name: qp-mlflow
     depends_on:
       postgres:
@@ -70,7 +72,7 @@ services:
       --backend-store-uri postgresql+psycopg2://${POSTGRES_USER:-qp}:${POSTGRES_PASSWORD:-qp}@postgres:5432/${POSTGRES_DB:-qp}
       --default-artifact-root s3://mlflow-artifacts/
     ports:
-      - "5000:5000"
+      - "15000:5000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:5000/health', timeout=2).status==200 else sys.exit(1)"]
       interval: 3s
@@ -82,7 +84,7 @@ services:
       context: ./compose/mock-oidc
     container_name: qp-mock-oidc
     ports:
-      - "4444:4444"
+      - "14444:4444"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4444/.well-known/openid-configuration"]
       interval: 3s
@@ -107,7 +109,7 @@ services:
       MLFLOW_TRACKING_URI: http://mlflow:5000
       OIDC_ISSUER: http://mock-oidc:4444
     ports:
-      - "8000:8000"
+      - "18000:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 3s
@@ -122,7 +124,7 @@ services:
       api:
         condition: service_healthy
     ports:
-      - "5173:5173"
+      - "15173:5173"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5173"]
       interval: 3s
