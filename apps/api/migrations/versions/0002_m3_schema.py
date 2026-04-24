@@ -253,10 +253,12 @@ def upgrade() -> None:
     )
 
     # Seed the bundled demo dataset. Storage URI points at MinIO; the actual
-    # upload is done by the minio-init one-shot service on `pq up`. The
-    # content_hash is a placeholder (zeros) that sdk.data.ohlcv recomputes
-    # and updates on the first successful read — migration can't download
-    # from MinIO at alembic-upgrade time.
+    # upload is done by the minio-init one-shot service on `pq up`.
+    #
+    # content_hash is the xxh64 of apps/api/data/spy_daily.parquet as generated
+    # by scripts/bundle_spy_data.py. If you regenerate the parquet, update the
+    # hex literal below. The test_bundled_dataset.py test enforces this stays
+    # in sync with the actual file bytes.
     op.execute(
         """
         INSERT INTO datasets (name, description, schema_json, content_hash_scheme)
@@ -277,7 +279,7 @@ def upgrade() -> None:
         SELECT d.id,
                'v1',
                's3://qp-artifacts/datasets/ohlcv-spy-daily-synthetic/v1/spy_daily.parquet',
-               '\x0000000000000000'::bytea,
+               '\x76b70beff25612da'::bytea,
                '{}'::jsonb,
                NOW()
         FROM datasets d WHERE d.name = 'ohlcv-spy-daily-synthetic'

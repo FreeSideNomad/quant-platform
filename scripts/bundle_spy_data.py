@@ -3,12 +3,17 @@
 Deterministic (numpy seed=20260424). NOT real SPY data — see dataset
 description in migration 0002. Regenerate anytime by rerunning:
   uv run python scripts/bundle_spy_data.py
+
+After regenerating, the printed xxh64 content hash MUST be pasted into
+migration 0002's seed INSERT for `dataset_versions.content_hash`. A CI
+test asserts the two stay in sync.
 """
 from __future__ import annotations
 from datetime import date, timedelta
 from pathlib import Path
 import numpy as np
 import polars as pl
+import xxhash
 
 
 def generate_synthetic_ohlcv(
@@ -79,7 +84,14 @@ def main() -> None:
     df = generate_synthetic_ohlcv()
     df.write_parquet(out, compression="snappy")
     size_kb = out.stat().st_size / 1024
+    xxh64 = xxhash.xxh64(out.read_bytes()).hexdigest()
     print(f"Wrote {out} ({df.height:,} rows, {size_kb:.1f} KB)")
+    print(f"xxh64 content hash: {xxh64}")
+    print(
+        "Migration 0002 stores this hash in dataset_versions.content_hash.\n"
+        "If you regenerated, update apps/api/migrations/versions/0002_m3_schema.py "
+        "accordingly — the test_bundled_dataset.py test will fail on drift."
+    )
 
 
 if __name__ == "__main__":
