@@ -103,17 +103,38 @@ Automated tests all green:
 - **Does the clean-clone flow work for a Linux user as well as a Mac user?** If only tested on one, note whether the other is a risk.
 - **Were the 1xxxx host ports the right call?** The port moves were made to sidestep known collisions (notably macOS Control Center holding port 5000). Revisit if any chosen port turns out to collide with something unexpected on a user's machine.
 
-## Sign-off
+## Sign-off (2026-04-24)
 
-- [ ] Automated tests green (unit + integration)
-- [ ] Script ran to completion without surprises
-- [ ] Decision points resolved (see notes below)
-- [ ] User approves proceeding to M2 (validation math port)
+- [x] Automated tests green (unit + integration): SDK 6/6, API 4/4, Integration 5/5
+- [x] Script ran to completion on macOS (`/tmp/qp-fresh`) and Ubuntu 24.04 x86_64 (`igor@ubuntu-server.local:/tmp/qp-fresh`); fresh-laptop boot 22s (Mac) / 17.6s (Linux), well under the 90s budget
+- [x] Decision points resolved (below)
+- [x] User approves proceeding to M2 (validation math port)
 
-## Defects found
+### Decision-point resolutions
 
-(Add below; classify each as MUST-FIX-BEFORE-M2 / DEFER-TO-V2 / SPEC-UPDATE)
+1. **`qp up` time acceptable** — yes. Cold 22s (Mac arm64) / 17.6s (Linux x86_64); far under the 90s plan budget and the 5-minute spec DoD.
+2. **`qp doctor` output clarity** — fixed mid-HIL (commit `768fe69`). When our stack is up, the busy ports are now reported as `N port(s) held by running qp stack (expected)` with exit 0; an external collision still exits 1.
+3. **UI placeholder readable** — yes, verified in Chrome: `<h1>Quant Platform</h1>`, "Skeleton (M1). Real UI ships in M5.", and the `/api/health` JSON block all render.
+4. **Linux compatibility** — yes, HIL re-run on Ubuntu 24.04 x86_64 passed all 9 steps.
+5. **1xxxx host ports the right call** — yes, retain. The Mac `AirPlay Receiver` collision on port 5000 proved the concern real.
+
+## Defects found (all resolved during HIL)
+
+All classified **MUST-FIX-BEFORE-M2** and landed on `feat/m1-skeleton` before sign-off:
+
+| # | Finding | Fix commit |
+|---|---|---|
+| 1 | `uv sync` alone doesn't install workspace-member scripts on fresh clone → `qp` not on PATH | `530594b` |
+| 2 | `docker compose ps` hides the `minio-init` exited(0) row → step 5 expectation unverifiable | `6a3da3e` |
+| 3 | UI check via `curl` returns only the HTML shell → needs browser-only note + concrete content expectation | `6a3da3e` |
+| 4 | `psql` host-side client not on every laptop → switch to `docker exec qp-postgres psql …` | `6a3da3e` |
+| 5 | Pre-merge clone must use `--branch feat/m1-skeleton` (main doesn't yet have the skeleton) | `14d22c8` |
+| 6 | No migrations runner in the compose stack → pgmq extension absent at boot | `3bba6fd` |
+| 7 | `qp doctor` reports FAIL on ports held by our own running stack | `768fe69` |
+| 8 | MLflow and the qp app share the `qp` database → their two Alembic trees collide on `alembic_version` | `0589a53` |
 
 ## Spec / plan updates triggered
 
-(If any finding changes a commitment in the spec or the M2 plan, record it here.)
+- **§5.1 & compose:** host-port scheme moved from {5432, 9000, 9001, 5000, 4444, 8000, 5173} to the 1xxxx block {15432, 19000, 19001, 15000, 14444, 18000, 15173}. Driven by the macOS AirPlay Receiver port-5000 collision; generalises the hygiene to "don't bind well-known host ports for local dev stacks."
+- **§6.2:** MLflow now uses a dedicated `mlflow` database inside the shared Postgres instance (not `qp`), because MLflow manages its own Alembic migration tree and the two collide on a shared `alembic_version` table. Worth adding to the spec's §6.2 schema notes so future milestones don't re-introduce the collision.
+- **CLI contract:** `qp doctor` port-check now distinguishes "held by our own running stack" (OK) from "held by something external" (FAIL). The spec's CLI-surface table doesn't need to grow, but this nuance belongs in the `qp doctor` help/reference once written.
