@@ -4,6 +4,7 @@ from __future__ import annotations
 import typer
 
 from quantplatform import __version__
+from quantplatform.cli.down import down as down_command
 from quantplatform.cli.up import up as up_command
 
 app = typer.Typer(
@@ -35,3 +36,4 @@ def root(
 
 
 app.command(name="up", help="Start the local Quant Platform stack.")(up_command)
+app.command(name="down", help="Stop the local Quant Platform stack (volumes preserved).")(down_command)
