@@ -66,22 +66,26 @@ Automated tests all green:
 
 5. **Verify all services**
    ```bash
-   docker compose ps
+   docker compose ps -a
    ```
-   - Expected: every row shows `healthy` (postgres, minio, mlflow, mock-oidc, api, ui). The `minio-init` row is `exited (0)` — that's correct; it's a one-shot init job.
+   - Expected: every long-running service row shows `healthy` (postgres, minio, mlflow, mock-oidc, api, ui). The `minio-init` row is `exited (0)` — that's correct; it's a one-shot init job. The `-a` flag is required: plain `docker compose ps` hides exited containers, so `minio-init` would be invisible without it.
 
 6. **Hit each service in a browser or curl**
-   - `http://localhost:18000/health` — expect JSON `{"status":"ok","role":"api","version":"0.1.0"}`
-   - `http://localhost:15000` — expect MLflow UI
-   - `http://localhost:19001` — expect MinIO console (login: `minioadmin` / `minioadmin`)
-   - `http://localhost:14444/.well-known/openid-configuration` — expect JSON with `issuer`
-   - `http://localhost:15173` — expect "Quant Platform — Skeleton (M1)" placeholder, with `/api/health` response rendered
+   - `http://localhost:18000/health` (curl or browser) — expect JSON `{"status":"ok","role":"api","version":"0.1.0"}`
+   - `http://localhost:15000` (browser) — expect MLflow UI
+   - `http://localhost:19001` (browser) — expect MinIO console (login: `minioadmin` / `minioadmin`)
+   - `http://localhost:14444/.well-known/openid-configuration` (curl or browser) — expect JSON with `issuer`
+   - `http://localhost:15173` (**browser only** — the UI is a client-rendered React SPA; curl returns only the HTML shell and will not show the placeholder text) — expect an `<h1>Quant Platform</h1>` heading, the caption "Skeleton (M1). Real UI ships in M5.", and a preformatted block containing the JSON `{status, role, version}` returned by `/api/health`.
 
 7. **State-persistence test**
    - `uv run qp down` — expected: stack stops gracefully; volumes preserved
    - `docker compose ps` — expected: no running containers
    - `uv run qp up` — expected: stack returns quickly (<30s; images and volumes reused)
-   - Connect to Postgres: `psql postgresql://qp:qp@localhost:15432/qp -c "\\dx"` — expected: `pgmq` extension present (installed by migration during first boot). Extensions persist across `down` / `up`.
+   - Connect to Postgres and check the `pgmq` extension persisted (use `docker exec` so no host-side `psql` client is required):
+     ```bash
+     docker exec qp-postgres psql -U qp -d qp -c "\dx" | grep pgmq
+     ```
+     Expected: a single row with `pgmq` listed. Extensions persist across `down` / `up` because the Postgres volume is preserved.
 
 8. **`qp doctor` after boot**
    - `uv run qp doctor` — expected: some ports now show as in-use (API on 18000, UI on 15173, etc.); this is correct behavior when the stack is up. Confirm this matches spec-behavior expectations.
