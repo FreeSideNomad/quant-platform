@@ -45,10 +45,11 @@ Automated tests all green:
 
 2. **Install the CLI**
    ```bash
-   uv sync
+   uv sync --all-packages
    uv run qp --version
    ```
    - Expected: prints `qp 0.1.0`.
+   - Note: `--all-packages` is required because the root `pyproject.toml` is a workspace shell with no dependencies; plain `uv sync` would not install `quantplatform` (which defines the `qp` script).
 
 3. **Run qp doctor**
    ```bash
