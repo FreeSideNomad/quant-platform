@@ -4,6 +4,7 @@ from __future__ import annotations
 import typer
 
 from quantplatform import __version__
+from quantplatform.cli.up import up as up_command
 
 app = typer.Typer(
     name="qp",
@@ -31,3 +32,6 @@ def root(
     ),
 ) -> None:
     """qp — Quant Platform CLI."""
+
+
+app.command(name="up", help="Start the local Quant Platform stack.")(up_command)
