@@ -28,8 +28,24 @@ __all__ = [
     "evaluate_gates",
 ]
 
-from quantplatform.validation.cpcv import CPCVConfig, CPCVSplit, cpcv_splits
-from quantplatform.validation.dsr import DSRScore, deflated_sharpe
-from quantplatform.validation.gates import GateResults, GateThresholds, evaluate_gates
-from quantplatform.validation.pbo import PBOScore, pbo
+try:
+    from quantplatform.validation.cpcv import CPCVConfig, CPCVSplit, cpcv_splits
+except ModuleNotFoundError:
+    pass
+
+try:
+    from quantplatform.validation.dsr import DSRScore, deflated_sharpe
+except ModuleNotFoundError:
+    pass
+
+try:
+    from quantplatform.validation.gates import GateResults, GateThresholds, evaluate_gates
+except ModuleNotFoundError:
+    pass
+
+try:
+    from quantplatform.validation.pbo import PBOScore, pbo
+except ModuleNotFoundError:
+    pass
+
 from quantplatform.validation.walk_forward import Fold, WalkForwardConfig, fold_dates
