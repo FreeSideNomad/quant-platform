@@ -44,3 +44,30 @@ def test_alembic_downgrade_base_then_upgrade_head(postgres_container) -> None:
     assert result.returncode == 0, result.stderr
     result = _run_alembic(["upgrade", "head"], db_url)
     assert result.returncode == 0, result.stderr
+
+
+def test_m3_tables_created_by_head(postgres_container) -> None:
+    """After `alembic upgrade head`, the six M3 tables must exist."""
+    db_url = postgres_container.get_connection_url()
+    result = _run_alembic(["upgrade", "head"], db_url)
+    assert result.returncode == 0, result.stderr
+
+    import psycopg2
+    # get_connection_url() returns a SQLAlchemy URL like
+    # "postgresql+psycopg2://..."; strip the driver prefix so psycopg2
+    # can parse it as a plain libpq DSN.
+    plain_url = db_url.replace("postgresql+psycopg2://", "postgresql://", 1)
+    conn = psycopg2.connect(plain_url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema='public'"
+            )
+            tables = {r[0] for r in cur.fetchall()}
+    finally:
+        conn.close()
+
+    expected = {"strategies", "runs", "events", "datasets", "dataset_versions", "lineage_reads"}
+    missing = expected - tables
+    assert not missing, f"missing tables: {missing}"
