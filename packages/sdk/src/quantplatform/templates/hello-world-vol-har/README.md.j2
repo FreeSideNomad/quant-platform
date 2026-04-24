@@ -26,6 +26,17 @@ pq run {{ name }}
 Thresholds are declared in `pq.toml` but are advisory in M3; M4 wires
 them to the promote API.
 
+## Running `pytest tests/` locally
+
+```bash
+uv sync
+uv run pytest tests/
+```
+
+`uv sync` resolves `quantplatform` from the public GitHub repo (pinned
+to a commit in `uv.lock`). After M8 ships to PyPI, the dependency
+switches to a plain `"quantplatform"` version spec.
+
 ## Author
 
 {{ author or "you" }}, {{ year or "2026" }}.

@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "{{ description or "HAR-style realized-variance forecast" }}"
 requires-python = ">=3.12"
 dependencies = [
-  "quantplatform",
+  # Pre-M8 (no PyPI publish): pull quantplatform from the public GitHub repo.
+  # The `@main` ref drops off once M3+ is merged; for in-flight milestones the
+  # ref points at the feature branch (see M3-era note below). After M8 this
+  # reverts to a plain "quantplatform" PyPI dep.
+  "quantplatform @ git+https://github.com/FreeSideNomad/quant-platform.git@main#subdirectory=packages/sdk",
   "lightgbm>=4.5",
   "polars-lts-cpu>=1.8",
 ]
@@ -12,6 +16,10 @@ dependencies = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+# Required so `hatch build` accepts direct-URL dependencies like the git+https above.
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/{{ name.replace('-', '_') }}"]

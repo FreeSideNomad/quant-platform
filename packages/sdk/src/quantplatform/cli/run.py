@@ -1,4 +1,4 @@
-"""`pq run <name>` — execute a strategy in host mode (container mode in T11)."""
+"""`pq run <name>` — execute a strategy in host mode (container mode via --container)."""
 from __future__ import annotations
 
 import os
@@ -197,7 +197,10 @@ def run(
         console.print("[green]Strategy completed successfully (container).[/green]")
         return
 
-    # Host mode: spawn strategy subprocess
+    # Host mode: run the strategy via `uv run` in the user's project venv —
+    # standard isolated Python-project workflow. The project's pyproject.toml
+    # declares `quantplatform` as a dep; how it resolves (PyPI / git / path)
+    # is the user's choice recorded there.
     env = {
         **os.environ,
         "QP_STRATEGY_ID": strategy_id,

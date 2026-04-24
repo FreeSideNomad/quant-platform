@@ -57,6 +57,8 @@ def test_pq_run_upserts_strategy_and_spawns_subprocess(runner: CliRunner, tmp_pa
 
     sub_run.assert_called_once()
     cmd = sub_run.call_args.args[0]
+    # pq run uses `uv run python -m <entry>` inside the user's project venv —
+    # standard Python-project workflow, isolation preserved.
     assert cmd[:3] == ["uv", "run", "python"]
     assert "-m" in cmd
     assert "hello_world.strategy" in cmd
