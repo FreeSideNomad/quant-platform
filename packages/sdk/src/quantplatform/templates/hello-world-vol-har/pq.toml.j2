@@ -1,0 +1,12 @@
+[project]
+name = "{{ name }}"
+entry = "{{ name.replace('-', '_') }}.strategy:main"
+
+[thresholds]
+pbo_max = 0.5
+dsr_probability_min = 0.95
+walk_forward_min_folds = 8
+
+[data]
+# MVP: only the bundled SPY synthetic dataset is available
+datasets = ["ohlcv-spy-daily-synthetic/v1"]

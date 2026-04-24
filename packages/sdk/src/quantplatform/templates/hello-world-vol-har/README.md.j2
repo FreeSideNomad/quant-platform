@@ -1,0 +1,31 @@
+# {{ name }}
+
+{{ description or "HAR-style realized-variance forecast on SPY daily OHLCV." }}
+
+## Quickstart
+
+```bash
+# From the project directory, with the platform stack already up (`pq up` in the quant-platform repo):
+pq run {{ name }}
+```
+
+## What it does
+
+- **Features**: HAR three-term realized variance — `rv_1d`, `rv_5d` (5-day mean), `rv_22d` (22-day mean).
+- **Target**: next-day realized variance.
+- **Model**: LightGBM regressor.
+- **Validation**: walk-forward, 3y train / 1m test / monthly step, min 8 folds.
+
+## Develop
+
+- `pq run {{ name }}` — train + log to MLflow (no promotion gate in M3).
+- `pq run {{ name }} --debug` — waits for a debugger to attach.
+- `pq run {{ name }} --container` — same, inside the worker container.
+- `pq e2e` — full pre-push check: ruff + pyright + pytest + container run.
+
+Thresholds are declared in `pq.toml` but are advisory in M3; M4 wires
+them to the promote API.
+
+## Author
+
+{{ author or "you" }}, {{ year or "2026" }}.

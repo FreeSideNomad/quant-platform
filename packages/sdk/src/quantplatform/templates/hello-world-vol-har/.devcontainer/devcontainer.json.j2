@@ -1,0 +1,10 @@
+{
+  "name": "{{ name }}",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/workspaces/{{ name }},type=bind"
+  ],
+  "customizations": {
+    "vscode": {"extensions": ["ms-python.python", "ms-python.debugpy", "charliermarsh.ruff"]}
+  }
+}

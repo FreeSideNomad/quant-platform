@@ -1,0 +1,25 @@
+[project]
+name = "{{ name }}"
+version = "0.1.0"
+description = "{{ description or "HAR-style realized-variance forecast" }}"
+requires-python = ">=3.12"
+dependencies = [
+  "quantplatform",
+  "lightgbm>=4.5",
+  "polars-lts-cpu>=1.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/{{ name.replace('-', '_') }}"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "numpy>=2.0",
+  "ruff>=0.7",
+  "pyright>=1.1.380",
+]

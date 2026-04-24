@@ -1,0 +1,53 @@
+"""{{ name }} — {{ description or "HAR-style realized-variance forecast on SPY daily OHLCV" }}.
+
+Author: {{ author or "you" }} ({{ year or "2026" }})
+"""
+from __future__ import annotations
+
+import lightgbm as lgb
+import polars as pl
+
+from quantplatform import Strategy, data, run
+
+
+class VolHAR(Strategy):
+    name = "{{ name }}"
+    thresholds = {"pbo_max": 0.5, "dsr_probability_min": 0.95, "walk_forward_min_folds": 8}
+
+    def features(self, df: pl.DataFrame) -> pl.DataFrame:
+        # HAR three-term realized variance features.
+        # log_ret is intermediate; we select only (date, rv_1d, rv_5d, rv_22d).
+        return (
+            df.sort("date")
+              .with_columns(
+                  log_ret=(pl.col("close") / pl.col("close").shift(1)).log(),
+              )
+              .with_columns(rv_1d=pl.col("log_ret") ** 2)
+              .with_columns(
+                  rv_5d=pl.col("rv_1d").rolling_mean(window_size=5),
+                  rv_22d=pl.col("rv_1d").rolling_mean(window_size=22),
+              )
+              .select(["date", "rv_1d", "rv_5d", "rv_22d"])
+              .drop_nulls()
+        )
+
+    def target(self, feat_df: pl.DataFrame) -> pl.Series:
+        # Next-day realized variance (read from feat_df per Strategy.train_and_validate contract).
+        return feat_df["rv_1d"].shift(-1)
+
+    def model(self) -> lgb.LGBMRegressor:
+        return lgb.LGBMRegressor(n_estimators=100, max_depth=4, verbose=-1)
+
+
+def main() -> None:
+    import os
+    with run.start(
+        strategy_id=os.environ["QP_STRATEGY_ID"],
+        as_of=os.environ.get("QP_AS_OF"),
+    ):
+        df = data.ohlcv(ticker="SPY")
+        VolHAR().train_and_validate(df)
+
+
+if __name__ == "__main__":
+    main()

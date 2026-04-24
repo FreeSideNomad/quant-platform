@@ -1,0 +1,37 @@
+"""Minimal smoke tests for the {{ name }} strategy (run without the compose stack)."""
+from __future__ import annotations
+
+from datetime import date, timedelta
+
+import numpy as np
+import polars as pl
+
+from {{ name.replace("-", "_") }}.strategy import VolHAR
+
+
+def _synthetic_spy(n_days: int = 100) -> pl.DataFrame:
+    rng = np.random.default_rng(seed=0)
+    dates = [date(2023, 1, 1) + timedelta(days=i) for i in range(n_days)]
+    close = 400 + np.cumsum(rng.normal(0, 1, n_days))
+    return pl.DataFrame({"date": dates, "close": close})
+
+
+def test_features_produces_rv_columns() -> None:
+    feat = VolHAR().features(_synthetic_spy())
+    assert set(feat.columns) == {"date", "rv_1d", "rv_5d", "rv_22d"}
+    assert feat.height > 0
+
+
+def test_target_is_shifted_rv_1d() -> None:
+    s = VolHAR()
+    feat = s.features(_synthetic_spy())
+    y = s.target(feat)
+    assert len(y) == feat.height
+    # Last value should be null (shift -1)
+    assert y[-1] is None
+
+
+def test_model_is_lightgbm_regressor() -> None:
+    import lightgbm as lgb
+    m = VolHAR().model()
+    assert isinstance(m, lgb.LGBMRegressor)

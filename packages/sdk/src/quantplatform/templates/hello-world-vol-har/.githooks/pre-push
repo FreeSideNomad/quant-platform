@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Runs pq e2e before every push. Budget: <90s with cache.
+set -euo pipefail
+pq e2e
