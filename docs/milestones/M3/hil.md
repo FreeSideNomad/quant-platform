@@ -30,12 +30,16 @@ What did NOT land (deliberately):
 - Ports 14444, 15000, 15173, 15432, 18000, 19000, 19001, 5678 free
 
 ```bash
-# From a fresh clone:
+# From a fresh clone (repo is public; `git clone https://...` also works):
 git clone --branch feat/m3-sdk-local-runs git@github.com:FreeSideNomad/quant-platform.git /tmp/m3-hil
 cd /tmp/m3-hil
 uv tool install ./packages/sdk
-pq --version          # → pq 0.1.0
+pq --version          # → pq 0.2.0
 ```
+
+If `uv tool install` complains `Permission denied` while symlinking to
+`~/.local/bin/pq`, that directory is root-owned on your machine; fix
+with `sudo chown -R $(whoami) ~/.local/bin`, then rerun the install.
 
 ## Script (target 30 min)
 
@@ -45,14 +49,14 @@ pq --version          # → pq 0.1.0
 
 3. **`pq new strategy m3-hello`** — inspect the scaffolded tree:
    - `m3-hello/pq.toml` with `project.name = "m3-hello"`, `project.entry = "m3_hello.strategy:main"`
-   - `m3-hello/src/m3-hello/strategy.py` (known issue: hyphen dir; see Defects)
+   - `m3-hello/src/m3_hello/strategy.py` (note underscored directory)
    - `m3-hello/tests/test_strategy.py`, `.vscode/launch.json`, `.idea/runConfigurations/`, `.pre-commit-config.yaml`, `.githooks/pre-push`, `README.md`
    - Confirm the strategy.py is under 40 lines of user-visible code.
 
-4. **Prepare the scaffolded project for run** (until T14 follow-ups land):
-   - Rename `src/m3-hello/` → `src/m3_hello/`
-   - Patch `pyproject.toml`: change `"quantplatform"` dep to `"quantplatform @ file:///tmp/m3-hil/packages/sdk"`, pin `"mlflow-skinny>=2.16,<3.0"`, add `[tool.hatch.metadata] allow-direct-references = true`
-   - `uv sync` in the project dir
+4. **`cd m3-hello && uv sync`** — resolves `quantplatform` from the
+   public GitHub repo on the `feat/m3-sdk-local-runs` branch (the
+   template's ref flips to `@main` at M3-merge; switches to plain
+   `"quantplatform"` PyPI dep at M8). Expect <5s on a warm cache.
 
 5. **`pq run m3-hello`** — host-mode run. Watch the console for:
    - `Upserting strategy 'm3-hello'...` → `Strategy created: m3-hello (<prefix>)`
@@ -93,21 +97,25 @@ pq --version          # → pq 0.1.0
 - **Is the 90s `pq e2e` budget actually hit on first vs warm run?** Record the times. If warm >90s, flag as a spec concern.
 - **Is the scaffolded project's first `uv sync` reasonable for a quant new to the stack, given the current patch-the-pyproject workaround?** If "no" — that's a MUST-FIX-BEFORE-M4 because M4 will layer more user-facing scaffolding on top.
 
-## Known issues (surfaced during T14 E2E test)
+## Pre-HIL fixes already landed (2026-04-24)
 
-All classifiable as either MUST-FIX-BEFORE-M4 or SPEC-UPDATE; see "Defects found" below for the sign-off classification:
+Three scaffolding defects surfaced during the pre-HIL critical review
+were fixed on the branch before this sign-off:
 
-1. **`pq new` template path hyphen vs Python import underscore mismatch.**
-   The template puts strategy.py at `src/{{name}}/strategy.py`. When `name = "m3-hello"`, this produces `src/m3-hello/` — but Python imports require `m3_hello`. `strategy.py`'s `main()` and tests import `m3_hello.strategy`. The template or the CLI must translate hyphens to underscores for the package directory.
+| # | Finding | Fix commit |
+|---|---|---|
+| 1 | Template dir `src/{{name}}/` kept hyphens; strategy.py imports required underscores | `cad17b5` (dir renamed to `src/{{ name.replace("-", "_") }}/`) |
+| 2 | Scaffolded pyproject declared `"quantplatform"` PyPI dep → failed to resolve pre-M8 | `cad17b5` (switched to `quantplatform @ git+https://...`); repo made public so no auth is needed; `0937384` pinned the ref at the feature branch until M3 merges to main |
+| 3 | `mlflow-skinny` unpinned → resolved to 3.x, incompatible with compose's MLflow 2.16 | `cad17b5` (pinned `>=2.16,<3.0` in SDK prod deps) |
+| 4 | Scaffolded `strategy.py` / `test_strategy.py` failed `ruff format --check` → `pq e2e` fatal | `d9a53fc` (reformatted both templates to ruff-canonical layout); SDK version bumped 0.1.0 → 0.2.0 so fresh `uv tool install` picks up the update |
 
-2. **Scaffolded `pyproject.toml` declares `"quantplatform"` as a PyPI dep.**
-   Pre-M8 (no PyPI publish), this fails to resolve. The scaffold must either:
-   - Use a path dep relative to where the user cloned the quant-platform repo (complex — user's layout varies), or
-   - Document the patch in the quickstart (current workaround), or
-   - Defer scaffolding a project-level `pyproject.toml` until M8 (the strategy can run via the platform's own venv in M3).
+## Non-fatal warnings you will see (acceptable for M3)
 
-3. **`mlflow-skinny` version drift.**
-   The scaffold resolves `mlflow-skinny>=2.16` to 3.x which has API changes incompatible with the compose stack's MLflow 2.16 server. Pin `<3.0` in the template, or bump the compose MLflow server to match.
+These are cosmetic and not sign-off blockers; flag any you want ticketed:
+
+- **sklearn: "X does not have valid feature names, but LGBMRegressor was fitted with feature names"** — emitted per fold by the LGBM prediction path. The features DataFrame has named columns on fit; prediction goes through a NumPy array without names. Fixable by passing the DataFrame (not `.to_numpy()`) to `.predict()` in `Strategy.train_and_validate`, or by suppressing via `warnings.filterwarnings` inside the strategy wrapper.
+- **MLflow: "Type hints must be wrapped in list[...]"** — the pyfunc wrapper's `predict(self, context, model_input)` uses `pl.DataFrame` as the input type hint; MLflow wants `list[pl.DataFrame]`. Cosmetic.
+- **MLflow: "requirements_utils: The following packages were not found in the public PyPI package index: {'quantplatform'}"** — expected pre-M8; MLflow's conda-env capture can't find quantplatform on PyPI because it isn't there yet. Resolves naturally at M8.
 
 ## Sign-off
 
@@ -122,10 +130,8 @@ All classifiable as either MUST-FIX-BEFORE-M4 or SPEC-UPDATE; see "Defects found
 
 (Add below; classify each as MUST-FIX-BEFORE-M4 / DEFER-TO-V2 / SPEC-UPDATE)
 
-Preload (from T14 surfacing):
-- **Hyphen → underscore in scaffold** — likely MUST-FIX-BEFORE-M4.
-- **Scaffold pyproject declares `quantplatform`** — MUST-FIX-BEFORE-M4 or SPEC-UPDATE (depending on whether we publish to TestPyPI in M3.5).
-- **`mlflow-skinny` pin** — MUST-FIX-BEFORE-M4 (trivial, just pin in template).
+The four pre-HIL defects in the table above are all fixed on-branch.
+This section is for anything HIL surfaces on top of that.
 
 ## Spec / plan updates triggered
 
