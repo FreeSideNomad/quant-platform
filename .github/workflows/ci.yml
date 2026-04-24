@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+      - run: uv sync
+      - name: API unit tests
+        working-directory: apps/api
+        run: uv run pytest -v
+      - name: SDK unit tests
+        working-directory: packages/sdk
+        run: uv run pytest -v
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: unit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: "9.12.0"
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile || pnpm install
+      - run: uv sync --group integration
+      - name: Run compose stack integration test
+        run: uv run --group integration pytest tests/integration/ -v
