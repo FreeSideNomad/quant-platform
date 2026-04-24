@@ -11,6 +11,8 @@ RUN pip install --no-cache-dir uv==0.4.23
 # Copy project
 COPY pyproject.toml ./
 COPY src ./src
+COPY migrations ./migrations
+COPY alembic.ini ./
 
 # Install deps
 RUN uv pip install --system --no-cache .

@@ -91,15 +91,30 @@ services:
       timeout: 3s
       retries: 20
 
+  migrations:
+    build:
+      context: ./apps/api
+    image: qp-api:m1
+    container_name: qp-migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-qp}:${POSTGRES_PASSWORD:-qp}@postgres:5432/${POSTGRES_DB:-qp}
+    command: ["alembic", "upgrade", "head"]
+
   api:
     build:
       context: ./apps/api
+    image: qp-api:m1
     container_name: qp-api
     depends_on:
       postgres:
         condition: service_healthy
       mlflow:
         condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
     environment:
       SERVICE_ROLE: api
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-qp}:${POSTGRES_PASSWORD:-qp}@postgres:5432/${POSTGRES_DB:-qp}
