@@ -1471,6 +1471,7 @@ dependencies = [
     { name = "mlflow-skinny" },
     { name = "numpy" },
     { name = "polars-lts-cpu" },
+    { name = "psycopg2-binary" },
     { name = "pydantic" },
     { name = "rich" },
     { name = "scipy" },
@@ -1487,6 +1488,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "testcontainers" },
 ]
 
 [package.metadata]
@@ -1497,6 +1499,7 @@ requires-dist = [
     { name = "mlflow-skinny", specifier = ">=2.16" },
     { name = "numpy", specifier = ">=2.0" },
     { name = "polars-lts-cpu", specifier = ">=1.8" },
+    { name = "psycopg2-binary", specifier = ">=2.9" },
     { name = "pydantic", specifier = ">=2.8" },
     { name = "rich", specifier = ">=13.7" },
     { name = "scipy", specifier = ">=1.14" },
@@ -1513,6 +1516,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "pytest-cov", specifier = ">=5.0" },
     { name = "ruff", specifier = ">=0.7" },
+    { name = "testcontainers", extras = ["postgres"], specifier = ">=4.8" },
 ]
 
 [[package]]
