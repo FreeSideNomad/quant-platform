@@ -95,7 +95,7 @@ with `sudo chown -R $(whoami) ~/.local/bin`, then rerun the install.
 - **Are the MLflow log keys and event payloads legible?** Open one MLflow run + one `events.payload` JSON and judge: would a new developer reading these understand what happened?
 - **Does the debugger attach flow work cleanly in at least one IDE?** VS Code is primary; PyCharm configs are scaffolded but not validated in this HIL.
 - **Is the 90s `pq e2e` budget actually hit on first vs warm run?** Record the times. If warm >90s, flag as a spec concern.
-- **Is the scaffolded project's first `uv sync` reasonable for a quant new to the stack, given the current patch-the-pyproject workaround?** If "no" — that's a MUST-FIX-BEFORE-M4 because M4 will layer more user-facing scaffolding on top.
+- **Is the scaffolded project's first `uv sync` reasonable for a quant new to the stack?** The scaffold now resolves `quantplatform` straight from the public GitHub repo with no hand-editing — timing should be <5s on warm cache, <30s cold. Flag if the UX feels wrong for a first-time quant.
 
 ## Pre-HIL fixes already landed (2026-04-24)
 
@@ -108,6 +108,7 @@ were fixed on the branch before this sign-off:
 | 2 | Scaffolded pyproject declared `"quantplatform"` PyPI dep → failed to resolve pre-M8 | `cad17b5` (switched to `quantplatform @ git+https://...`); repo made public so no auth is needed; `0937384` pinned the ref at the feature branch until M3 merges to main |
 | 3 | `mlflow-skinny` unpinned → resolved to 3.x, incompatible with compose's MLflow 2.16 | `cad17b5` (pinned `>=2.16,<3.0` in SDK prod deps) |
 | 4 | Scaffolded `strategy.py` / `test_strategy.py` failed `ruff format --check` → `pq e2e` fatal | `d9a53fc` (reformatted both templates to ruff-canonical layout); SDK version bumped 0.1.0 → 0.2.0 so fresh `uv tool install` picks up the update |
+| 5 | `pq --version` reported `0.1.0` after the pyproject bump — Python `__version__` was out of sync | `12b3d9f` aligns `quantplatform.__version__` with the pyproject version |
 
 ## Non-fatal warnings you will see (acceptable for M3)
 
