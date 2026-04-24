@@ -71,3 +71,27 @@ def test_m3_tables_created_by_head(postgres_container) -> None:
     expected = {"strategies", "runs", "events", "datasets", "dataset_versions", "lineage_reads"}
     missing = expected - tables
     assert not missing, f"missing tables: {missing}"
+
+
+def test_m3_seed_dataset_is_registered(postgres_container) -> None:
+    """Migration 0002 seeds the ohlcv-spy-daily-synthetic dataset."""
+    db_url = postgres_container.get_connection_url()
+    result = _run_alembic(["upgrade", "head"], db_url)
+    assert result.returncode == 0, result.stderr
+
+    import psycopg2
+    plain = db_url.replace("+psycopg2", "")
+    conn = psycopg2.connect(plain)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT name FROM datasets WHERE name = 'ohlcv-spy-daily-synthetic'")
+            assert cur.fetchone() is not None
+            cur.execute(
+                "SELECT version_tag FROM dataset_versions dv "
+                "JOIN datasets d ON d.id = dv.dataset_id "
+                "WHERE d.name = 'ohlcv-spy-daily-synthetic'"
+            )
+            versions = [r[0] for r in cur.fetchall()]
+            assert versions == ['v1']
+    finally:
+        conn.close()
