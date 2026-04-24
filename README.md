@@ -2,7 +2,7 @@
 
 An open-source-first, silo-tenant productionalization platform that lets a quant ship a model from notebook to audited production without an engineering hand-off.
 
-**Status:** MVP-B in design. The previous attempt (MVP-A) was parked on 2026-04-22 after an architectural retrospective; see [`LESSONS.md`](./LESSONS.md). MVP-B is a greenfield build on the pre-MVP-A baseline, shaped around one developer journey (the quant) and gated by 8 human-in-the-loop milestones.
+**Status:** MVP-B in design. The previous attempt (MVP-A) was parked on 2026-04-22 after an architectural retrospective; see [`docs/archive/LESSONS.md`](./docs/archive/LESSONS.md). MVP-B is a greenfield build on the pre-MVP-A baseline, shaped around one developer journey (the quant) and gated by 8 human-in-the-loop milestones.
 
 Current MVP design: [`docs/superpowers/specs/2026-04-23-quant-mvp-design.md`](./docs/superpowers/specs/2026-04-23-quant-mvp-design.md).
 
@@ -60,15 +60,14 @@ quant-platform/
 ├── blueprint/           # reference architecture (broad; the spec is the MVP cut)
 ├── docker-compose.yml
 ├── docker-compose.debug.yml
-├── LESSONS.md           # MVP-A retrospective
-├── START.md             # kickoff brief for the MVP-B session
+├── docs/archive/        # session kickoff artifacts (LESSONS.md, START.md)
 └── README.md
 ```
 
 ## Documentation
 
-- [`LESSONS.md`](./LESSONS.md) — MVP-A retrospective; the failure modes MVP-B avoids
-- [`START.md`](./START.md) — kickoff brief; three pillars for MVP-B
+- [`docs/archive/LESSONS.md`](./docs/archive/LESSONS.md) — MVP-A retrospective; the failure modes MVP-B avoids
+- [`docs/archive/START.md`](./docs/archive/START.md) — kickoff brief; three pillars for MVP-B
 - [`docs/superpowers/specs/2026-04-23-quant-mvp-design.md`](./docs/superpowers/specs/2026-04-23-quant-mvp-design.md) — current MVP design
 - [`blueprint/`](./blueprint/) — reference architecture (v1-scope; the MVP is a narrower cut)
 
