@@ -1,0 +1,164 @@
+"""`pq new strategy <name>` — scaffold a new strategy project from a Jinja template."""
+from __future__ import annotations
+
+import shutil
+import stat
+import subprocess
+from datetime import date
+from importlib.resources import files
+from pathlib import Path
+
+import typer
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from rich.console import Console
+
+console = Console()
+
+new_app = typer.Typer(no_args_is_help=True, help="Scaffold new projects.")
+
+
+_TEMPLATE_DIR_BY_NAME = {
+    "vol-har": "hello-world-vol-har",
+    # "returns": "hello-world-returns",  # M4
+}
+
+
+def _git_user_name() -> str:
+    try:
+        r = subprocess.run(
+            ["git", "config", "--get", "user.name"],
+            capture_output=True, text=True, timeout=3,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except Exception:
+        pass
+    return "you"
+
+
+def _find_template_dir(template_key: str) -> Path:
+    """Resolve the template directory inside the installed quantplatform package."""
+    template_folder = _TEMPLATE_DIR_BY_NAME.get(template_key)
+    if template_folder is None:
+        if template_key == "returns":
+            raise NotImplementedError(
+                "the `returns` template lands in M4 (companion expected-to-fail strategy)"
+            )
+        raise ValueError(f"unknown template: {template_key!r}. Choose: vol-har")
+
+    # Resolve via importlib.resources — portable across installed / editable modes.
+    templates_root = files("quantplatform").joinpath("templates")
+    tdir = Path(str(templates_root)) / template_folder
+    if not tdir.is_dir():
+        raise FileNotFoundError(
+            f"template directory not found at {tdir}. Is quantplatform installed correctly?"
+        )
+    return tdir
+
+
+@new_app.command("strategy", help="Scaffold a new strategy project.")
+def new_strategy(
+    name: str = typer.Argument(..., help="Project name (e.g. hello-world)"),
+    template: str = typer.Option("vol-har", "--template", "-t", help="Template: vol-har or returns (M4)"),
+    target_dir: Path | None = typer.Option(None, "--dir", "-d", help="Destination; default ./<name>/"),
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite a non-empty target directory"),
+) -> None:
+    """Render the chosen Jinja template into the target directory."""
+    # Validate name (conservative: letters, digits, hyphen; no leading digit)
+    if not name or not name[0].isalpha() or not all(c.isalnum() or c == "-" for c in name):
+        console.print(
+            f"[red]invalid name {name!r}: must start with a letter and contain only letters, digits, and hyphens[/red]"
+        )
+        raise typer.Exit(code=2)
+
+    try:
+        source = _find_template_dir(template)
+    except NotImplementedError as e:
+        console.print(f"[yellow]{e}[/yellow]")
+        raise typer.Exit(code=3)
+    except (ValueError, FileNotFoundError) as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=2)
+
+    dest = target_dir or Path(name)
+    if dest.exists() and any(dest.iterdir()) and not force:
+        console.print(
+            f"[red]target directory {dest} is not empty; re-run with --force to overwrite[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    dest.mkdir(parents=True, exist_ok=True)
+
+    env = Environment(
+        loader=FileSystemLoader(str(source)),
+        keep_trailing_newline=True,
+        undefined=StrictUndefined,
+    )
+    context = {
+        "name": name,
+        "description": "HAR-style realized-variance forecast on SPY daily OHLCV",
+        "author": _git_user_name(),
+        "year": str(date.today().year),
+    }
+
+    rendered_files: list[Path] = []
+    for root, dirs, files_ in _walk_sorted(source):
+        rel = root.relative_to(source)
+        # Render any {{...}} in path segments
+        if rel.parts:
+            rel_rendered = Path(*[_render_segment(seg, env, context) for seg in rel.parts])
+        else:
+            rel_rendered = rel
+        out_dir = dest / rel_rendered
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        for fname in files_:
+            src_file = root / fname
+            if fname.endswith(".j2"):
+                # Render as Jinja
+                rel_template_path = str((rel / fname).as_posix())
+                tmpl = env.get_template(rel_template_path)
+                content = tmpl.render(**context)
+                out_name = fname[:-3]  # strip .j2
+                # Also Jinja-render the output filename in case it contains {{...}}
+                out_name = _render_segment(out_name, env, context)
+                out_path = out_dir / out_name
+                out_path.write_text(content)
+                rendered_files.append(out_path)
+            else:
+                # Verbatim copy; Jinja-render the filename only
+                out_name = _render_segment(fname, env, context)
+                out_path = out_dir / out_name
+                shutil.copyfile(src_file, out_path)
+                # Preserve executable bit for .githooks/*
+                src_mode = src_file.stat().st_mode
+                if src_mode & stat.S_IEXEC or str(rel).startswith(".githooks"):
+                    out_path.chmod(out_path.stat().st_mode | stat.S_IEXEC | stat.S_IRWXU)
+                rendered_files.append(out_path)
+
+    console.print(
+        f"[green]Scaffolded {template!r} template into {dest} "
+        f"({len(rendered_files)} files).[/green]"
+    )
+    console.print(f"Next: [bold]cd {dest} && pq up && pq run {name}[/bold]")
+
+
+def _walk_sorted(root: Path):
+    """os.walk but deterministic and returning Paths."""
+    yield from _walk_recurse(root)
+
+
+def _walk_recurse(root: Path):
+    entries = sorted(root.iterdir())
+    files_here = [e.name for e in entries if e.is_file()]
+    dirs_here = [e for e in entries if e.is_dir()]
+    yield root, [d.name for d in dirs_here], files_here
+    for d in dirs_here:
+        yield from _walk_recurse(d)
+
+
+def _render_segment(seg: str, env: Environment, context: dict) -> str:
+    """If a path segment contains {{...}}, render it."""
+    if "{{" in seg:
+        return env.from_string(seg).render(**context)
+    return seg
