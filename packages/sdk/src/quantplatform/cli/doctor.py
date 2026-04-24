@@ -1,4 +1,4 @@
-"""`qp doctor` — verify local prerequisites."""
+"""`pq doctor` — verify local prerequisites."""
 from __future__ import annotations
 
 import shutil
@@ -67,7 +67,7 @@ def _check_ports() -> tuple[bool, str]:
     if not busy:
         return True, "All required ports free"
     if _stack_is_running():
-        return True, f"{len(busy)} port(s) held by running qp stack (expected)"
+        return True, f"{len(busy)} port(s) held by running pq stack (expected)"
     return False, f"Port {busy[0]} already in use"
 
 

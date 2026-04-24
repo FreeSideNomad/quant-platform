@@ -1,0 +1,34 @@
+flowchart LR
+    classDef user fill:#FFE082,stroke:#333,color:#000
+    classDef app fill:#C8E6C9,stroke:#333,color:#000
+    classDef db fill:#B3E5FC,stroke:#333,color:#000
+
+    U[User Action]:::user -->|POST /commands| API[Command API]:::app
+    API --> CH[Command Handler]:::app
+    CH --> AGG["Aggregate<br/>domain rules"]:::app
+
+    subgraph TX["Single Postgres Transaction"]
+        EV[(events table)]:::db
+        ST[(aggregate state)]:::db
+        Q1[(PGMQ proj_ui)]:::db
+        Q2[(PGMQ proj_graph)]:::db
+        Q3[(PGMQ proj_analytics)]:::db
+    end
+
+    AGG -->|append event| EV
+    AGG -->|upsert state| ST
+    AGG -->|enqueue| Q1
+    AGG -->|enqueue| Q2
+    AGG -->|enqueue| Q3
+
+    Q1 -->|poll| P1[UI Projector]:::app
+    Q2 -->|poll| P2[Graph Projector]:::app
+    Q3 -->|poll| P3[Analytics Projector]:::app
+
+    P1 --> RM1[(ui tables)]:::db
+    P2 --> RM2[(AGE graph)]:::db
+    P3 --> RM3[(TimescaleDB)]:::db
+
+    RM1 -.->|GET /queries| API
+    RM2 -.->|GET /queries| API
+    RM3 -.->|GET /queries| API

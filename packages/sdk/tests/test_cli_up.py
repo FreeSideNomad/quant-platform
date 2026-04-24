@@ -1,4 +1,4 @@
-"""Unit tests for `qp up` — mocks docker compose subprocess."""
+"""Unit tests for `pq up` — mocks docker compose subprocess."""
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -6,7 +6,7 @@ from unittest.mock import patch
 from quantplatform.cli.main import app
 
 
-def test_qp_up_invokes_docker_compose(runner) -> None:
+def test_pq_up_invokes_docker_compose(runner) -> None:
     with patch("quantplatform.cli.up.subprocess.run") as run:
         run.return_value.returncode = 0
         result = runner.invoke(app, ["up"])
@@ -18,7 +18,7 @@ def test_qp_up_invokes_docker_compose(runner) -> None:
     assert "-d" in args
 
 
-def test_qp_up_propagates_nonzero_exit(runner) -> None:
+def test_pq_up_propagates_nonzero_exit(runner) -> None:
     with patch("quantplatform.cli.up.subprocess.run") as run:
         run.return_value.returncode = 2
         result = runner.invoke(app, ["up"])

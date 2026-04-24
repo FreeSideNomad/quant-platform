@@ -1,0 +1,30 @@
+flowchart LR
+    classDef data fill:#C5E1A5,stroke:#333,color:#000
+    classDef train fill:#FFCC80,stroke:#333,color:#000
+    classDef reg fill:#B39DDB,stroke:#333,color:#000
+    classDef serve fill:#80DEEA,stroke:#333,color:#000
+    classDef app fill:#C8E6C9,stroke:#333,color:#000
+    classDef orch fill:#E1BEE7,stroke:#333,stroke-width:2px,color:#000
+
+    GOLD[Gold Tables]:::data --> EXTRACT["Training Extract<br/>as_of pinned"]:::app
+
+    EXTRACT --> DISPATCH{Compute}:::app
+    DISPATCH --> TRUN["training_run<br/>dynamic Dagster asset"]:::orch
+    TRUN -->|CPU| CR_JOB[Cloud Run Job]:::train
+    TRUN -->|GPU| VTX[Vertex AI Training]:::train
+
+    CR_JOB --> MLFLOW["MLflow<br/>Track and Register"]:::reg
+    VTX --> MLFLOW
+
+    MLFLOW --> VALIDATE["Asset Checks<br/>walk-forward, PBO, DSR<br/>Dagster asset checks"]:::orch
+    VALIDATE -->|pass| PROMOTE["Promote<br/>event to PGMQ"]:::app
+
+    PROMOTE --> MV["model_version<br/>Dagster asset"]:::orch
+
+    MV --> SRV_IN[Sync Inference]:::serve
+    MV --> SRV_BATCH[Batch Inference]:::serve
+    MV --> SRV_GPU[Dedicated GPU Serving]:::serve
+
+    SRV_IN --> LOG[(inference_log)]:::data
+    SRV_BATCH --> LOG
+    SRV_GPU --> LOG

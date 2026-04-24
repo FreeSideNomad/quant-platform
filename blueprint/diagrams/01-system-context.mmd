@@ -1,0 +1,31 @@
+flowchart TB
+    classDef user fill:#FFE082,stroke:#333,stroke-width:1px,color:#000
+    classDef external fill:#B3E5FC,stroke:#333,stroke-width:1px,color:#000
+    classDef platform fill:#C8E6C9,stroke:#333,stroke-width:1px,color:#000
+    classDef vendor fill:#F8BBD0,stroke:#333,stroke-width:1px,color:#000
+
+    QU[Quant Developer]:::user
+    RI[Risk Officer]:::user
+    OP[Ops Engineer]:::user
+    AD[Platform Admin]:::user
+
+    IDP["Customer Identity Provider<br/>Google Workspace or Microsoft Entra"]:::external
+    SRC["Customer Data Sources<br/>SFTP, HTTPS, GCS drop"]:::external
+    DEL["Customer Delivery Targets<br/>SFTP pickup, GCS bucket"]:::external
+
+    subgraph TEN["Tenant GCP Project - Silo"]
+        APP["Quant Platform Instance<br/>React UI, REST API, Workers"]:::platform
+    end
+
+    GH["GitHub<br/>Source and CI/CD"]:::vendor
+    CP["Control Plane<br/>Fleet Management"]:::vendor
+    OBS["Observability Aggregator<br/>Cloud Logging and Monitoring"]:::vendor
+
+    QU & RI & OP & AD -->|Browser HTTPS| APP
+    APP -->|OIDC Auth| IDP
+    SRC -->|File Drop| APP
+    APP -->|File Export| DEL
+
+    GH -->|Deploy Revisions| APP
+    CP -->|Lifecycle Ops| APP
+    APP -->|Telemetry| OBS

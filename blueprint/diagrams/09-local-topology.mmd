@@ -1,0 +1,36 @@
+flowchart TB
+    classDef dev fill:#C8E6C9,stroke:#333,color:#000
+    classDef cont fill:#B3E5FC,stroke:#333,color:#000
+    classDef test fill:#FFE082,stroke:#333,color:#000
+
+    DEV[Developer Laptop]:::dev
+
+    subgraph HOST["Host Process"]
+        UVIC["uvicorn reload<br/>app process"]:::dev
+        VITE["Vite dev server<br/>React SPA"]:::dev
+    end
+
+    subgraph DC["docker-compose"]
+        PG["postgres<br/>AGE TimescaleDB<br/>PGMQ pg_cron"]:::cont
+        MIN["minio<br/>S3 GCS compatible"]:::cont
+        OIDC["mock-oidc<br/>IdP simulation"]:::cont
+        MLF["mlflow<br/>tracking server"]:::cont
+        DGSTR["dagster<br/>webserver + daemon<br/>port 3000"]:::cont
+    end
+
+    TEST["make test<br/>pytest and Playwright"]:::test
+
+    DEV --> UVIC
+    DEV --> VITE
+    DEV -->|browse UI :3000| DGSTR
+    UVIC --> PG
+    UVIC --> MIN
+    UVIC --> OIDC
+    UVIC --> MLF
+    UVIC -->|GraphQL trigger materializations| DGSTR
+    VITE -->|proxy api| UVIC
+    MLF --> PG
+    MLF --> MIN
+    DGSTR --> PG
+    TEST --> UVIC
+    TEST --> VITE

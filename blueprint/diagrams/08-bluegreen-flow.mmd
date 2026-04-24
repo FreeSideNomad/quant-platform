@@ -1,0 +1,30 @@
+flowchart LR
+    classDef git fill:#E1BEE7,stroke:#333,color:#000
+    classDef ci fill:#FFE082,stroke:#333,color:#000
+    classDef stg fill:#B3E5FC,stroke:#333,color:#000
+    classDef prod fill:#C8E6C9,stroke:#333,color:#000
+    classDef rb fill:#FFCDD2,stroke:#333,color:#000
+
+    PR[Pull Request]:::git --> CI1["PR Checks<br/>lint test build"]:::ci
+    CI1 --> MERGE[Merge main]:::git
+    MERGE --> CI2["Main workflow<br/>test and image build"]:::ci
+    CI2 --> AR["Push to<br/>Artifact Registry"]:::ci
+
+    AR --> GREEN["Deploy Green<br/>Cloud Run no-traffic"]:::stg
+    GREEN --> MIG["Forward-Compatible<br/>Migration Job"]:::stg
+    MIG --> SMOKE["Smoke Test<br/>green URL"]:::stg
+
+    SMOKE -->|fail| RB1[Rollback to Blue]:::rb
+    SMOKE -->|pass| SHIFT["Traffic Shift<br/>10 → 50 → 100%"]:::stg
+
+    SHIFT -->|metrics fail| RB2[Instant Rollback]:::rb
+    SHIFT -->|metrics pass| READY[Ready for Fleet]:::stg
+
+    READY --> W1["Canary<br/>wave"]:::prod
+    W1 --> W2["Early-Adopter<br/>wave"]:::prod
+    W2 --> W3["General<br/>wave"]:::prod
+    W3 --> W4["Conservative<br/>wave"]:::prod
+
+    W1 -.->|failure| HALT[Halt Wave]:::rb
+    W2 -.->|failure| HALT
+    W3 -.->|failure| HALT

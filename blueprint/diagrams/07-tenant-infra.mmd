@@ -1,0 +1,49 @@
+flowchart TB
+    classDef ext fill:#FFE082,stroke:#333,color:#000
+    classDef lb fill:#B3E5FC,stroke:#333,color:#000
+    classDef svc fill:#C8E6C9,stroke:#333,color:#000
+    classDef data fill:#FFCCBC,stroke:#333,color:#000
+    classDef sec fill:#F8BBD0,stroke:#333,color:#000
+
+    USER[Customer Users]:::ext
+    IDP[Customer IdP]:::ext
+    SRC[Customer Data Sources]:::ext
+
+    subgraph PROJ["Tenant GCP Project"]
+        LB["Cloud Load Balancer<br/>Cloud CDN<br/>Custom Domain TLS"]:::lb
+
+        subgraph VPC["VPC"]
+            APP["Cloud Run: App"]:::svc
+            MLF["Cloud Run: MLflow"]:::svc
+            DGSTR["Cloud Run: Dagster<br/>webserver + daemon"]:::svc
+            TJOB["Cloud Run Jobs<br/>training migrations"]:::svc
+        end
+
+        PG["Cloud SQL or AlloyDB<br/>Postgres with extensions"]:::data
+        BUCKET["GCS Data and Artefacts"]:::data
+
+        SM["Secret Manager<br/>IdP, JWT key<br/>source creds"]:::sec
+        AR["Artifact Registry<br/>pull only"]:::sec
+    end
+
+    PLAT["Vendor Platform Project<br/>Artifact Registry source<br/>Control Plane<br/>Observability"]:::ext
+
+    USER -->|HTTPS| LB
+    LB --> APP
+    APP -->|OIDC| IDP
+    SRC -->|File drops| BUCKET
+    APP <-->|VPC private| PG
+    APP --> BUCKET
+    APP --> MLF
+    MLF --> PG
+    MLF --> BUCKET
+    APP --> SM
+    APP -->|/dagster/* proxy| DGSTR
+    DGSTR <-->|VPC private| PG
+    TJOB --> PG
+    TJOB --> BUCKET
+    PLAT -.->|image pull and deploy| AR
+    AR -->|image| APP
+    AR -->|image| MLF
+    AR -->|image| DGSTR
+    AR -->|image| TJOB

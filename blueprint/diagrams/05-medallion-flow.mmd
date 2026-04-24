@@ -1,0 +1,33 @@
+flowchart LR
+    classDef src fill:#FFCDD2,stroke:#333,color:#000
+    classDef b fill:#FFE0B2,stroke:#333,color:#000
+    classDef s fill:#C5E1A5,stroke:#333,color:#000
+    classDef g fill:#B39DDB,stroke:#333,color:#000
+    classDef sink fill:#80DEEA,stroke:#333,color:#000
+    classDef orch fill:#E1BEE7,stroke:#333,stroke-width:2px,color:#000
+
+    SFTP[SFTP Feed]:::src
+    API_SRC[Vendor API]:::src
+    DROP[GCS Drop]:::src
+    STREAM[Streaming Feed]:::src
+
+    SFTP & API_SRC & DROP & STREAM --> BRZ
+
+    subgraph DAG["Dagster Asset Graph<br/>materialization, lineage, checks"]
+        BRZ["Bronze<br/>GCS immutable parquet<br/>content-hashed paths<br/>Dagster asset"]:::b
+        SIL["Silver<br/>Postgres and TimescaleDB<br/>bi-temporal, lineage<br/>Dagster asset"]:::s
+        GLD["Gold<br/>materialised views<br/>continuous aggregates<br/>Dagster asset"]:::g
+        CHK["Asset Checks<br/>Pandera schemas<br/>row counts freshness"]:::orch
+
+        BRZ -->|validate and type with Pandera| SIL
+        SIL --> CHK
+        CHK -->|pass| GLD
+        SIL -->|aggregate point-in-time| GLD
+    end
+
+    GLD --> READUI[UI Read Model]:::sink
+    GLD --> READ_FEAT[Training Feature Sets]:::sink
+    GLD --> READ_SERV[Serving Features]:::sink
+    GLD --> READ_EXPORT[File Exports]:::sink
+
+    GLD -.->|domain events to PGMQ| EVENTS[CQRS Event Bus]

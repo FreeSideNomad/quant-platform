@@ -1,0 +1,23 @@
+---
+title: "Quant Platform Blueprint"
+subtitle: "A reference architecture for productionalising hedge-fund quantitative models on Google Cloud"
+author: "Reference architecture"
+date: "2026"
+lang: en
+documentclass: report
+classoption:
+  - oneside
+  - 11pt
+header-includes: |
+  \usepackage{booktabs}
+  \usepackage{longtable}
+  \usepackage{array}
+  \usepackage{xcolor}
+  \definecolor{codegray}{HTML}{F5F5F5}
+  \usepackage{fancyhdr}
+  \pagestyle{fancy}
+  \fancyhf{}
+  \fancyhead[L]{Quant Platform Blueprint}
+  \fancyhead[R]{\thepage}
+  \renewcommand{\headrulewidth}{0.4pt}
+...

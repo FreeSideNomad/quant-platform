@@ -1,4 +1,4 @@
-"""`qp up` — start the local stack via docker compose."""
+"""`pq up` — start the local stack via docker compose."""
 from __future__ import annotations
 
 import subprocess

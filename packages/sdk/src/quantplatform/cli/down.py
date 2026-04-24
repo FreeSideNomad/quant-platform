@@ -1,4 +1,4 @@
-"""`qp down` — stop the local stack. Data volumes are preserved by default."""
+"""`pq down` — stop the local stack. Data volumes are preserved by default."""
 from __future__ import annotations
 
 import subprocess

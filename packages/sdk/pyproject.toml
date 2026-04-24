@@ -1,7 +1,7 @@
 [project]
 name = "quantplatform"
 version = "0.1.0"
-description = "Quant Platform SDK + qp CLI"
+description = "Quant Platform SDK + pq CLI"
 requires-python = ">=3.12"
 dependencies = [
   "typer>=0.12",
@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-qp = "quantplatform.cli.main:app"
+pq = "quantplatform.cli.main:app"
 
 [build-system]
 requires = ["hatchling"]

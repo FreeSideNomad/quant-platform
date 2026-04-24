@@ -1,0 +1,82 @@
+flowchart TB
+    classDef img fill:#E1BEE7,stroke:#333,stroke-width:2px,color:#000
+    classDef role fill:#C8E6C9,stroke:#333,stroke-width:1px,color:#000
+    classDef store fill:#FFE082,stroke:#333,stroke-width:1px,color:#000
+    classDef ext fill:#B3E5FC,stroke:#333,stroke-width:1px,color:#000
+    classDef bridge fill:#FFCCBC,stroke:#333,stroke-width:1px,color:#000
+
+    UI["React SPA<br/>served by api or CDN"]:::role
+
+    IMG["Single Application Image<br/>one codebase, role selected via env var"]:::img
+
+    subgraph DEP["Per-Tenant Cloud Run Deployment Set"]
+        API["role=api<br/>HTTP, autoscale by request rate"]:::role
+        WUI["role=worker-proj-ui<br/>autoscale by proj_ui depth"]:::role
+        WGR["role=worker-proj-graph<br/>autoscale by proj_graph depth"]:::role
+        WAN["role=worker-proj-analytics<br/>autoscale by proj_analytics depth"]:::role
+        WPB["role=worker-pipeline-bronze<br/>autoscale by ingest_bronze depth"]:::role
+        WPS["role=worker-pipeline-silver<br/>autoscale by ingest_silver depth"]:::role
+        WTR["role=worker-training<br/>autoscale by training depth"]:::role
+        WIB["role=worker-inference-batch<br/>autoscale by inference_batch depth"]:::role
+        SCH["role=scheduler<br/>min=1 max=1"]:::role
+        BRG["role=bridge-pgmq-http<br/>converts queue depth to HTTP rate"]:::bridge
+        DGW["role=dagster-webserver<br/>UI on /dagster/*"]:::role
+        DGD["role=dagster-daemon<br/>schedules sensors materializations"]:::role
+    end
+
+    subgraph DATA["Data Plane"]
+        PG["Postgres 16<br/>AGE, TimescaleDB<br/>PGMQ, pg_cron"]:::store
+        GCS["GCS Bucket<br/>Bronze and Artefacts"]:::store
+    end
+
+    ML["MLflow service<br/>separate image"]:::role
+
+    IDP["Customer IdP<br/>OIDC"]:::ext
+    SRC["Data Sources<br/>File Drops"]:::ext
+
+    IMG -.->|same image| API
+    IMG -.->|same image| WUI
+    IMG -.->|same image| WGR
+    IMG -.->|same image| WAN
+    IMG -.->|same image| WPB
+    IMG -.->|same image| WPS
+    IMG -.->|same image| WTR
+    IMG -.->|same image| WIB
+    IMG -.->|same image| SCH
+    IMG -.->|same image| BRG
+    IMG -.->|same image| DGW
+    IMG -.->|same image| DGD
+
+    UI --> API
+    UI -->|/dagster/* via API proxy| DGW
+    API -->|events state queue msgs one tx| PG
+    API -->|authn| IDP
+
+    DGW --> PG
+    DGD --> PG
+    DGD -->|materialize assets| WPB
+
+    BRG -->|drain queues| PG
+    BRG -->|HTTP| WUI
+    BRG -->|HTTP| WGR
+    BRG -->|HTTP| WAN
+    BRG -->|HTTP| WPB
+    BRG -->|HTTP| WPS
+    BRG -->|HTTP| WIB
+
+    WUI --> PG
+    WGR --> PG
+    WAN --> PG
+    WPB --> GCS
+    WPB --> PG
+    WPS --> PG
+    WTR --> ML
+    WIB --> ML
+    WIB --> GCS
+
+    SCH -->|enqueue periodic| PG
+    SRC -->|files| GCS
+
+    ML --> PG
+    ML --> GCS
+    API --> ML

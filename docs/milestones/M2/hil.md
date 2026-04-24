@@ -4,7 +4,7 @@
 
 What landed:
 - `packages/sdk/src/quantplatform/validation/` module with PBO, DSR, CPCV, walk-forward, and gates (ported from MVP-A archive; LESSONS.md §worth-keeping).
-- Unit tests: 4 PBO + 4 DSR + 4 CPCV + 5 walk-forward + 9 gates + 5 Hypothesis property tests + 8 edge-case tests = 39 tests.
+- Unit tests: 4 PBO + 4 DSR + 4 CPCV + 5 walk-forward + 9 gates + 5 Hypothesis property tests + 8 edge-case tests + 4 reference-value tests + 1 DSR NaN-guard = 44 tests.
 - 100% line-coverage gate on the validation module (201/201 stmts).
 
 What did NOT land (deliberately):
@@ -34,7 +34,7 @@ Automated tests all green, coverage at 100%.
    cd packages/sdk
    uv run pytest tests/validation/ -v
    ```
-   Expected: 39 tests PASS, coverage report shows 100% on every file under
+   Expected: 44 tests PASS, coverage report shows 100% on every file under
    `quantplatform/validation/`.
 
 2. **Walk one reference test in full**
@@ -66,7 +66,7 @@ Automated tests all green, coverage at 100%.
 
 ## Sign-off
 
-- [ ] Automated tests green (39/39 PASS; coverage 100%)
+- [ ] Automated tests green (39/44 PASS; coverage 100%)
 - [ ] One reference test walked end-to-end and accepted
 - [ ] Default thresholds discussed and accepted (or a spec update logged)
 - [ ] Public API names accepted (or rename tickets logged)

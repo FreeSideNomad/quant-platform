@@ -1,4 +1,4 @@
-"""qp CLI entry point."""
+"""pq CLI entry point."""
 from __future__ import annotations
 
 import typer
@@ -9,7 +9,7 @@ from quantplatform.cli.down import down as down_command
 from quantplatform.cli.up import up as up_command
 
 app = typer.Typer(
-    name="qp",
+    name="pq",
     help="Quant Platform CLI — local stack and strategy workflows.",
     no_args_is_help=True,
     add_completion=False,
@@ -18,7 +18,7 @@ app = typer.Typer(
 
 def _version_callback(value: bool) -> None:
     if value:
-        typer.echo(f"qp {__version__}")
+        typer.echo(f"pq {__version__}")
         raise typer.Exit(code=0)
 
 
@@ -30,10 +30,10 @@ def root(
         "-V",
         callback=_version_callback,
         is_eager=True,
-        help="Show qp version and exit.",
+        help="Show pq version and exit.",
     ),
 ) -> None:
-    """qp — Quant Platform CLI."""
+    """pq — Quant Platform CLI."""
 
 
 app.command(name="up", help="Start the local Quant Platform stack.")(up_command)

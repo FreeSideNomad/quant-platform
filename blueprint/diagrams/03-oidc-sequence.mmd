@@ -1,0 +1,23 @@
+sequenceDiagram
+    autonumber
+    participant B as Browser React SPA
+    participant A as App /auth
+    participant I as Customer IdP
+    participant D as Postgres
+
+    B->>A: GET /auth/login
+    A->>B: 302 redirect to IdP with auth URL and PKCE
+    B->>I: GET auth URL
+    I->>B: Login and MFA prompt
+    B->>I: Credentials
+    I->>B: 302 to /auth/callback with code
+    B->>A: GET /auth/callback with code
+    A->>I: POST /token with code and PKCE verifier
+    I->>A: id_token and access_token
+    A->>A: Verify id_token via JWKS
+    A->>D: Upsert user and load app roles
+    A->>A: Mint session JWT
+    A->>B: Set-Cookie session_jwt then 302 /app
+    B->>A: Subsequent calls with cookie
+    A->>A: Validate session JWT on each request
+    A->>B: 200 OK

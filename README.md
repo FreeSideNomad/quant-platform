@@ -11,16 +11,16 @@ Current MVP design: [`docs/superpowers/specs/2026-04-23-quant-mvp-design.md`](./
 Once the MVP ships, onboarding is:
 
 ```bash
-# Install the qp CLI (macOS or Linux)
+# Install the pq CLI (macOS or Linux)
 curl -sSfL https://get.quantplatform.io | sh
 # or
 uv tool install quantplatform
 
 # Scaffold a strategy and run it locally
-qp new strategy hello-world
+pq new strategy hello-world
 cd hello-world
-qp up                    # start the full stack in docker-compose
-qp run hello-world       # train + walk-forward + PBO/DSR/CPCV gate
+pq up                    # start the full stack in docker-compose
+pq run hello-world       # train + walk-forward + PBO/DSR/CPCV gate
 ```
 
 Open <http://localhost:5173> to view the walk-forward report and promote the model. Everything runs on your laptop — Postgres, MinIO, MLflow, FastAPI, worker, UI, mock OIDC — via one docker-compose stack.
@@ -35,7 +35,7 @@ None of this is built yet. The spec defines what will be true when MVP-B is comp
 - **Honesty substrate** — PBO, DSR, CPCV, walk-forward are enforced gates that block promotion of overfit backtests
 - **Data lineage** — content-hashed reads via the SDK; bi-temporal `_knowable_at` / `_valid_from` / `_valid_to` columns; hash-chained audit log
 - **Frontend** — React 19 + Vite + TanStack Router + Tailwind v4 + Radix + Motion + Zustand (doodle-1 stack)
-- **Developer surface** — a single `qp` CLI (six commands in MVP) + project-per-strategy Python packages; no codegen
+- **Developer surface** — a single `pq` CLI (six commands in MVP) + project-per-strategy Python packages; no codegen
 
 The architecture assumes a hedge-fund customer will eventually run each tenant in their own GCP project under the Bring-Your-Own-Cloud model. The MVP is the laptop-side of that topology; the deployed tenant is the same Docker image with different env vars.
 
@@ -48,7 +48,7 @@ quant-platform/
 │   ├── ui/              # React / Vite / TanStack frontend
 │   └── accounts/        # FastAPI accounts service (hosted at accounts.quantplatform.io)
 ├── packages/
-│   └── sdk/             # quantplatform Python package (SDK + qp CLI)
+│   └── sdk/             # quantplatform Python package (SDK + pq CLI)
 ├── templates/
 │   ├── hello-world/     # volatility-forecast scaffold (passes gate)
 │   └── hello-world-returns/  # returns-forecast scaffold (fails gate; teaching)

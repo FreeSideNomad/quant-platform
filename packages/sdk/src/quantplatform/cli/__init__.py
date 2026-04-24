@@ -1,1 +1,1 @@
-"""qp CLI entry point."""
+"""pq CLI entry point."""
