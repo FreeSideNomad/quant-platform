@@ -1,6 +1,6 @@
 FROM node:20-alpine AS build
 WORKDIR /app
-COPY package.json ./
+COPY package.json .npmrc* ./
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 COPY pnpm-lock.yaml* ./
 RUN pnpm install

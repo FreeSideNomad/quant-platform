@@ -17,3 +17,10 @@ select = ["E", "F", "W", "I", "UP", "B", "ASYNC", "SIM"]
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
+
+[dependency-groups]
+integration = [
+  "pytest>=8.3",
+  "httpx>=0.27",
+  "tenacity>=9.0",
+]
