@@ -102,16 +102,63 @@ def test_pq_run_propagates_subprocess_exit_code(runner: CliRunner, tmp_path: Pat
     assert result.exit_code == 42
 
 
-def test_pq_run_container_flag_not_implemented(runner: CliRunner, tmp_path: Path) -> None:
-    _write_project(tmp_path)
-    old_cwd = os.getcwd()
-    os.chdir(tmp_path)
-    try:
-        result = runner.invoke(app, ["run", "hello-world", "--container"])
-    finally:
-        os.chdir(old_cwd)
-    assert result.exit_code == 3
-    assert "M3-T11" in result.output
+def test_pq_run_container_mode_invokes_docker_compose_run(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _write_project(tmp_path, "container-strat")
+    # Create a fake docker-compose.yml in tmp_path so _find_compose_dir finds it
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n")
+
+    with patch("quantplatform.cli.run.httpx.post") as post, \
+         patch("quantplatform.cli.run.subprocess.run") as sub_run, \
+         patch("quantplatform.cli.run._git_sha", return_value="abc123"), \
+         patch("quantplatform.cli.run._uv_lock_hash", return_value="deadbeef"):
+        post.return_value.status_code = 200
+        post.return_value.json.return_value = {"strategy_id": "00000000-0000-0000-0000-000000000001", "created": True}
+        post.return_value.raise_for_status.return_value = None
+        sub_run.return_value.returncode = 0
+
+        old = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            result = runner.invoke(app, ["run", "container-strat", "--container"])
+        finally:
+            os.chdir(old)
+
+    assert result.exit_code == 0, result.output
+    cmd = sub_run.call_args.args[0]
+    assert cmd[:4] == ["docker", "compose", "--profile", "worker"]
+    assert "run" in cmd and "--rm" in cmd
+    assert any("/workspace" in str(c) for c in cmd)
+    assert "container_strat.strategy" in cmd
+
+
+def test_pq_run_container_mode_with_debug_uses_debugpy(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _write_project(tmp_path, "dbg-container")
+    (tmp_path / "docker-compose.yml").write_text("services: {}\n")
+
+    with patch("quantplatform.cli.run.httpx.post") as post, \
+         patch("quantplatform.cli.run.subprocess.run") as sub_run, \
+         patch("quantplatform.cli.run._git_sha", return_value="abc123"), \
+         patch("quantplatform.cli.run._uv_lock_hash", return_value="deadbeef"):
+        post.return_value.status_code = 200
+        post.return_value.json.return_value = {"strategy_id": "00000000-0000-0000-0000-000000000001", "created": False}
+        post.return_value.raise_for_status.return_value = None
+        sub_run.return_value.returncode = 0
+
+        old = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            result = runner.invoke(app, ["run", "dbg-container", "--container", "--debug"])
+        finally:
+            os.chdir(old)
+
+    assert result.exit_code == 0
+    cmd = sub_run.call_args.args[0]
+    assert "debugpy" in cmd
+    assert "0.0.0.0:5678" in cmd
 
 
 def test_pq_run_debug_adds_debugpy_to_cmd(runner: CliRunner, tmp_path: Path) -> None:

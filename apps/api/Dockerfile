@@ -17,6 +17,9 @@ COPY alembic.ini ./
 # Install deps
 RUN uv pip install --system --no-cache .
 
+# worker_training role needs debugpy for remote attach
+RUN pip install --no-cache-dir debugpy==1.8.16
+
 # Entrypoint selects role at runtime
 ENV SERVICE_ROLE=api
 EXPOSE 8000

@@ -149,6 +149,27 @@ services:
       timeout: 3s
       retries: 20
 
+  worker:
+    build:
+      context: ./apps/api
+    image: qp-api:m1
+    container_name: pq-worker
+    profiles: ["worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+    environment:
+      SERVICE_ROLE: worker_training
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-qp}:${POSTGRES_PASSWORD:-qp}@postgres:5432/${POSTGRES_DB:-qp}
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    ports:
+      - "5678:5678"   # debugpy
+
 volumes:
   qp-postgres-data:
   qp-minio-data:

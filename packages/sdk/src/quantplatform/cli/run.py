@@ -60,17 +60,80 @@ def _api_base_url() -> str:
     return os.environ.get("QP_API_URL", "http://localhost:18000")
 
 
+def _find_compose_dir(project_dir: Path) -> Path:
+    """Locate the quant-platform repo root (where docker-compose.yml lives).
+
+    Strategy: walk up from project_dir. First candidate with docker-compose.yml wins.
+    Fallback: use QP_COMPOSE_DIR env var if set. Raises FileNotFoundError otherwise.
+    """
+    env_dir = os.environ.get("QP_COMPOSE_DIR")
+    if env_dir:
+        return Path(env_dir)
+    cur = project_dir.resolve()
+    for _ in range(8):
+        if (cur / "docker-compose.yml").is_file():
+            return cur
+        cur = cur.parent
+        if cur == cur.parent:  # reached filesystem root
+            break
+    raise FileNotFoundError(
+        "could not find docker-compose.yml by walking up from the project dir. "
+        "Set QP_COMPOSE_DIR to the quant-platform repo root."
+    )
+
+
+def _run_container_mode(
+    *,
+    project_dir: Path,
+    strategy_id: str,
+    entry_module: str,
+    as_of: str,
+    debug: bool,
+) -> int:
+    """Run the strategy inside the worker container via docker compose run."""
+    inner_cmd: list[str]
+    if debug:
+        inner_cmd = [
+            "python", "-m", "debugpy",
+            "--listen", "0.0.0.0:5678",
+            "--wait-for-client",
+            "-m", entry_module,
+        ]
+        console.print(
+            "[yellow]Worker will wait for debugger on localhost:5678; attach your IDE now.[/yellow]"
+        )
+    else:
+        inner_cmd = ["python", "-m", entry_module]
+
+    compose_dir = _find_compose_dir(project_dir)
+
+    cmd = [
+        "docker", "compose", "--profile", "worker", "run",
+        "--rm",
+        "--service-ports",
+        "--volume", f"{project_dir.resolve()}:/workspace:ro",
+        "--workdir", "/workspace",
+        "worker",
+        *inner_cmd,
+    ]
+    console.print(f"[bold]Container exec:[/bold] {' '.join(cmd)}")
+
+    env = {
+        **os.environ,
+        "QP_STRATEGY_ID": strategy_id,
+        "QP_AS_OF": as_of,
+    }
+    result = subprocess.run(cmd, cwd=compose_dir, env=env)
+    return result.returncode
+
+
 def run(
     name: str | None = typer.Argument(None, help="Strategy name (project directory). Defaults to cwd project."),
     as_of: str | None = typer.Option(None, "--as-of", help="Run date YYYY-MM-DD (default: today)"),
     debug: bool = typer.Option(False, "--debug", help="Start strategy under debugpy; wait for IDE attach"),
-    container: bool = typer.Option(False, "--container", help="Run inside worker container (M3-T11)"),
+    container: bool = typer.Option(False, "--container", help="Run inside worker container via docker compose"),
 ) -> None:
     """Execute a strategy locally."""
-    if container:
-        console.print("[yellow]--container mode lands in M3-T11[/yellow]")
-        raise typer.Exit(code=3)
-
     try:
         project_dir = _resolve_project_dir(name)
     except FileNotFoundError as e:
@@ -113,8 +176,28 @@ def run(
     action = "created" if upsert["created"] else "updated"
     console.print(f"[green]Strategy {action}: {strategy_name} ({strategy_id[:8]})[/green]")
 
-    # Spawn strategy subprocess
     entry_module = entry.split(":")[0]  # "pkg.mod:main" -> "pkg.mod"
+
+    if container:
+        console.print(f"[bold]Running {strategy_name!r} in container mode...[/bold]")
+        try:
+            rc = _run_container_mode(
+                project_dir=project_dir,
+                strategy_id=strategy_id,
+                entry_module=entry_module,
+                as_of=as_of_str,
+                debug=debug,
+            )
+        except FileNotFoundError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(code=1)
+        if rc != 0:
+            console.print(f"[red]container exited with code {rc}[/red]")
+            raise typer.Exit(code=rc)
+        console.print("[green]Strategy completed successfully (container).[/green]")
+        return
+
+    # Host mode: spawn strategy subprocess
     env = {
         **os.environ,
         "QP_STRATEGY_ID": strategy_id,
