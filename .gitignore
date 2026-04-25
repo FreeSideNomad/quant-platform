@@ -28,6 +28,12 @@ data/
 mlflow-artefacts/
 /tmp/
 
+# ...but the bundled demo dataset under apps/api/data ships with the repo
+# (CC0 Public Domain — see apps/api/data/PROVENANCE.md). Maintainers
+# refresh it via `uv run python scripts/refresh_aapl_data.py`.
+!apps/api/data/
+!apps/api/data/*
+
 # IDE
 .idea/
 .vscode/

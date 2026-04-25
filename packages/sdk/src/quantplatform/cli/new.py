@@ -112,7 +112,7 @@ def new(
     )
     context = {
         "name": name,
-        "description": "HAR-style realized-variance forecast on SPY daily OHLCV",
+        "description": "HAR-style realized-variance forecast on AAPL daily OHLCV",
         "author": _git_user_name(),
         "year": str(date.today().year),
     }

@@ -18,24 +18,29 @@ from quantplatform.sdk.lineage import compute_content_hash, record_read
 from quantplatform.sdk.run import current_run_id
 
 
-_DATASET_NAME = "ohlcv-spy-daily-synthetic"
+_DATASET_NAME = "ohlcv-aapl-daily"
 _DATASET_VERSION = "v1"
+_BUNDLED_TICKER = "AAPL"
 
 
 def ohlcv(*, ticker: str, as_of: date | str | None = None) -> pl.DataFrame:
     """Load daily OHLCV bars.
 
-    MVP: only ticker="SPY" is bundled (as synthetic data; see dataset
-    description). `as_of` filters by `_knowable_at` if the bi-temporal
-    columns exist on the parquet — the bundled v1 data has no such
-    columns so `as_of` is recorded in lineage but does not filter rows.
+    MVP: only the bundled AAPL daily dataset is registered out of the box
+    (real historical data sourced from a CC0 Public Domain Kaggle
+    snapshot — see apps/api/data/PROVENANCE.md for source + fetch date).
+    Users register their own data with `pq data register` (M4+).
+
+    `as_of` filters by `_knowable_at` if the bi-temporal columns exist
+    on the parquet — the bundled v1 data has no such columns so `as_of`
+    is recorded in lineage but does not filter rows.
 
     Must be called inside a `run.start(...)` context.
     """
-    if ticker != "SPY":
+    if ticker.upper() != _BUNDLED_TICKER:
         raise ValueError(
-            f"only SPY is bundled in MVP; got ticker={ticker!r}. "
-            f"Register custom data with `pq data register` (v2 feature)."
+            f"only {_BUNDLED_TICKER} is bundled in MVP; got ticker={ticker!r}. "
+            f"Register custom data with `pq data register` (M4+)."
         )
 
     # Must be inside a run context
@@ -62,7 +67,7 @@ def ohlcv(*, ticker: str, as_of: date | str | None = None) -> pl.DataFrame:
     if dv is None:
         raise RuntimeError(
             f"{_DATASET_NAME}/{_DATASET_VERSION} not registered; "
-            f"is the compose stack bootstrapped (migration 0002 run)?"
+            f"is the compose stack bootstrapped (v1 migration run)?"
         )
 
     # Download the raw bytes from MinIO (via boto3)

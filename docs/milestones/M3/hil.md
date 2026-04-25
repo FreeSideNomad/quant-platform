@@ -127,6 +127,47 @@ branch's tip after sign-off.
 - **Is the 90s `pq e2e` budget actually hit on first vs warm run?** Record the times. If warm >90s, flag as a spec concern.
 - **Is the scaffolded project's first `uv sync` reasonable for a quant new to the stack?** The scaffold now resolves `quantplatform` straight from the public GitHub repo with no hand-editing — timing should be <5s on warm cache, <30s cold. Flag if the UX feels wrong for a first-time quant.
 
+## v0.4.0 upgrade notes (2026-04-25)
+
+Three substantive changes between 0.3.4 and 0.4.0 — coordinated because
+they all want a fresh stack volume:
+
+1. **MLflow 2.16 → 3.11.** Server image (`compose/mlflow/Dockerfile`)
+   bumped to `ghcr.io/mlflow/mlflow:v3.11.1`; client `mlflow-skinny`
+   pinned `>=3.11,<4.0`. Eliminates the pydantic / utcnow / type-hint
+   deprecation warnings that came from 2.x's own internals — see
+   [MLflow #11203](https://github.com/mlflow/mlflow/issues/11203). The
+   `log_model` call is now `name=` (was `artifact_path=`); model URI
+   format is `models:/<model_id>` (we use the returned object's
+   `.model_uri` attribute, not a hand-built string).
+
+2. **Migrations collapsed `0001_init` + `0002_m3_schema` → `0001_v1`.**
+   Single baseline. `alembic_version` rows from the old multi-step
+   history are incompatible — which is why a fresh volume is required.
+
+3. **Bundled dataset replaced** — synthetic `spy_daily.parquet` →
+   real `aapl_daily.parquet`. Source: [jacksoncrow/stock-market-dataset
+   on Kaggle](https://www.kaggle.com/datasets/jacksoncrow/stock-market-dataset),
+   CC0 Public Domain. 9,909 daily bars, 1980-12-12 → 2020-04-01. See
+   `apps/api/data/PROVENANCE.md`. The v1 migration derives `content_hash`
+   and `schema_json` from the parquet bytes at upgrade time — no
+   hard-coded literals, structurally drift-free. `data.ohlcv()` now
+   takes `ticker="AAPL"` instead of `"SPY"`.
+
+**Required HIL prep step before re-running:**
+
+```bash
+pq down -v   # removes both qp-postgres-data and qp-minio-data volumes
+pq up        # rebuilds images (--build is default), runs the v1
+             # migration fresh, re-uploads the new aapl_daily.parquet
+             # to MinIO, MLflow 3.x initialises its own backend store
+```
+
+The bundled parquet ships in the repo. If a maintainer needs to
+refresh it (new ticker, license re-verification), run
+`uv run python scripts/refresh_aapl_data.py` with `KAGGLE_API_TOKEN`
+exported in the shell — end users never need a Kaggle account.
+
 ## Corrections to recent commit explanations (2026-04-25)
 
 A code review on 2026-04-25 caught two commit messages that mis-stated

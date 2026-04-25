@@ -8,5 +8,7 @@ dsr_probability_min = 0.95
 walk_forward_min_folds = 8
 
 [data]
-# MVP: only the bundled SPY synthetic dataset is available
-datasets = ["ohlcv-spy-daily-synthetic/v1"]
+# MVP: only the bundled AAPL daily dataset is available (CC0 source —
+# see apps/api/data/PROVENANCE.md). Register additional datasets with
+# `pq data register` (M4+).
+datasets = ["ohlcv-aapl-daily/v1"]

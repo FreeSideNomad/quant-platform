@@ -49,13 +49,13 @@ def _make_fake_parquet_bytes() -> bytes:
 
 def test_ohlcv_outside_run_raises(db_url_env: str) -> None:
     with pytest.raises(RuntimeError, match="outside of a run"):
-        data.ohlcv(ticker="SPY")
+        data.ohlcv(ticker="AAPL")
 
 
-def test_ohlcv_rejects_non_spy_ticker(db_url_env: str, strategy_id: str) -> None:
+def test_ohlcv_rejects_non_bundled_ticker(db_url_env: str, strategy_id: str) -> None:
     with run.start(strategy_id=strategy_id, as_of="2024-12-01"):
-        with pytest.raises(ValueError, match="only SPY"):
-            data.ohlcv(ticker="AAPL")
+        with pytest.raises(ValueError, match="only AAPL"):
+            data.ohlcv(ticker="SPY")
 
 
 def test_ohlcv_returns_df_and_writes_lineage(db_url_env: str, strategy_id: str) -> None:
@@ -67,7 +67,7 @@ def test_ohlcv_returns_df_and_writes_lineage(db_url_env: str, strategy_id: str) 
     fake_s3.get_object.return_value = {"Body": BytesIO(raw)}
     with patch("quantplatform.sdk.data.boto3.client", return_value=fake_s3):
         with run.start(strategy_id=strategy_id, as_of="2024-12-01") as r:
-            df = data.ohlcv(ticker="SPY", as_of="2024-12-01")
+            df = data.ohlcv(ticker="AAPL", as_of="2024-12-01")
 
     assert df.height == 2
     assert set(df.columns) >= {"date", "open", "high", "low", "close", "volume"}
@@ -85,6 +85,6 @@ def test_ohlcv_returns_df_and_writes_lineage(db_url_env: str, strategy_id: str) 
             assert len(rows) == 1
             assert bytes(rows[0]["content_hash"]) == expected_hash
             assert rows[0]["rows_returned"] == 2
-            assert rows[0]["filter_predicates"]["ticker"] == "SPY"
+            assert rows[0]["filter_predicates"]["ticker"] == "AAPL"
     finally:
         conn.close()

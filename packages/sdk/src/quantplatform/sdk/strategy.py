@@ -239,13 +239,18 @@ class Strategy(ABC):
             sample_output = wrapper.predict(None, input_example)
             signature = mlflow.models.infer_signature(input_example, sample_output)
 
-            _mlflow_pyfunc.log_model(
-                artifact_path="model",
+            # MLflow 3.x: `artifact_path` → `name`; the returned object's
+            # `.model_uri` is the canonical models:/<id> URI (the prior
+            # `runs:/<run>/<path>` form is deprecated as part of "logged
+            # models become first-class entities" — see MLflow 3 migration
+            # guide).
+            logged = _mlflow_pyfunc.log_model(
+                name="model",
                 python_model=wrapper,
                 signature=signature,
                 input_example=input_example,
             )
-            mlflow_model_uri = f"runs:/{mlflow_run_id}/model"
+            mlflow_model_uri = logged.model_uri
 
         # Emit ModelTrained audit event
         emit_event(

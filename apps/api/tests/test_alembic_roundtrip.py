@@ -73,8 +73,8 @@ def test_m3_tables_created_by_head(postgres_container) -> None:
     assert not missing, f"missing tables: {missing}"
 
 
-def test_m3_seed_dataset_is_registered(postgres_container) -> None:
-    """Migration 0002 seeds the ohlcv-spy-daily-synthetic dataset."""
+def test_v1_seed_dataset_is_registered(postgres_container) -> None:
+    """The v1 migration seeds the ohlcv-aapl-daily dataset (real CC0 data)."""
     db_url = postgres_container.get_connection_url()
     result = _run_alembic(["upgrade", "head"], db_url)
     assert result.returncode == 0, result.stderr
@@ -84,12 +84,12 @@ def test_m3_seed_dataset_is_registered(postgres_container) -> None:
     conn = psycopg2.connect(plain)
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT name FROM datasets WHERE name = 'ohlcv-spy-daily-synthetic'")
+            cur.execute("SELECT name FROM datasets WHERE name = 'ohlcv-aapl-daily'")
             assert cur.fetchone() is not None
             cur.execute(
                 "SELECT version_tag FROM dataset_versions dv "
                 "JOIN datasets d ON d.id = dv.dataset_id "
-                "WHERE d.name = 'ohlcv-spy-daily-synthetic'"
+                "WHERE d.name = 'ohlcv-aapl-daily'"
             )
             versions = [r[0] for r in cur.fetchall()]
             assert versions == ['v1']

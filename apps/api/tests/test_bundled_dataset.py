@@ -1,69 +1,44 @@
-"""Guards on the bundled apps/api/data/spy_daily.parquet seed row in
-migration 0002:
+"""Sanity check on the bundled apps/api/data/aapl_daily.parquet.
 
-  1. The hex content_hash in the migration must equal the xxh64 of the
-     parquet bytes. If scripts/bundle_spy_data.py is rerun and the
-     parquet changes, the printed xxh64 hash must be pasted into the
-     migration literal — this test fails until it is.
+This test used to assert the migration's hard-coded `content_hash` and
+`schema_json` literals matched the parquet's actual bytes/schema. The
+v1 migration now derives both at upgrade time directly from the parquet,
+so drift between registered metadata and actual data is structurally
+impossible — the migration IS the guard.
 
-  2. The schema_json in the migration must equal the actual polars
-     schema of the parquet. Drift here means the registered dataset
-     contract no longer describes the data on disk; SDK code reads
-     from the registered schema, so silent drift would propagate to
-     model signatures.
+What's left to check is the existence and basic shape of the bundled
+file itself (file present, readable as parquet, has the columns the
+SDK expects). Refresh via `uv run python scripts/refresh_aapl_data.py`.
 """
 from __future__ import annotations
 
-import json
-import re
 from pathlib import Path
 
 import polars as pl
-import xxhash
 
 API_DIR = Path(__file__).parent.parent
-PARQUET = API_DIR / "data" / "spy_daily.parquet"
-MIGRATION = API_DIR / "migrations" / "versions" / "0002_m3_schema.py"
+PARQUET = API_DIR / "data" / "aapl_daily.parquet"
+
+# Columns the SDK expects (data.ohlcv() returns these). Keeping this list
+# here as the explicit contract: if a future refresh script changes the
+# schema, this assertion catches it before the migration runs.
+EXPECTED_COLUMNS = {"date", "open", "high", "low", "close", "adj_close", "volume"}
 
 
-def test_migration_content_hash_matches_bundled_parquet() -> None:
-    assert PARQUET.is_file(), f"missing bundled parquet at {PARQUET}"
-    expected = xxhash.xxh64(PARQUET.read_bytes()).hexdigest()
-
-    src = MIGRATION.read_text()
-    # Find `\xNNNNNNNNNNNNNNNN'::bytea` next to the SPY seed INSERT
-    matches = re.findall(r"'\\x([0-9a-fA-F]{16})'::bytea", src)
-    assert matches, "no BYTEA hex literal found in migration 0002 — did the seed INSERT change shape?"
-    # The dataset_versions seed is the only BYTEA literal we hard-code in this migration
-    assert expected in [m.lower() for m in matches], (
-        f"migration 0002 hard-codes content_hash(es) {matches} "
-        f"but the bundled parquet's xxh64 is {expected}. "
-        f"Either the parquet was regenerated (update the migration literal) "
-        f"or the migration drifted (regenerate via scripts/bundle_spy_data.py)."
+def test_bundled_parquet_exists_and_has_expected_columns() -> None:
+    assert PARQUET.is_file(), (
+        f"missing bundled parquet at {PARQUET}. "
+        f"Refresh via `uv run python scripts/refresh_aapl_data.py` "
+        f"(maintainer; needs Kaggle API token in KAGGLE_API_TOKEN)."
     )
-
-
-def test_migration_schema_json_matches_bundled_parquet() -> None:
-    """schema_json literals in migration 0002 must equal the parquet's actual schema."""
-    assert PARQUET.is_file(), f"missing bundled parquet at {PARQUET}"
-    actual_schema = {col: str(dtype) for col, dtype in pl.read_parquet(PARQUET).schema.items()}
-
-    src = MIGRATION.read_text()
-    # Both `datasets.schema_json` and `dataset_versions.schema_json` should
-    # carry the column→dtype map. Pull every JSONB literal from the file
-    # and require at least one to match the parquet's schema verbatim.
-    jsonb_literals = re.findall(r"'(\{[^']*\})'::jsonb", src)
-    parsed = []
-    for lit in jsonb_literals:
-        try:
-            parsed.append(json.loads(lit))
-        except json.JSONDecodeError:
-            continue
-
-    assert actual_schema in parsed, (
-        f"migration 0002 schema_json literals {parsed} do not include the "
-        f"bundled parquet's actual schema {actual_schema}. The seed INSERT "
-        f"for the SPY dataset must carry the real column→dtype map; SDK "
-        f"code reads from this row to build MLflow signatures, so drift "
-        f"here will silently produce wrong signatures."
+    df = pl.read_parquet(PARQUET)
+    actual_columns = set(df.columns)
+    missing = EXPECTED_COLUMNS - actual_columns
+    extra = actual_columns - EXPECTED_COLUMNS
+    assert not missing, f"bundled parquet missing expected columns: {missing}"
+    assert not extra, (
+        f"bundled parquet has unexpected columns {extra} — "
+        f"the SDK contract is exactly {EXPECTED_COLUMNS}; widen this test "
+        f"deliberately if the SDK is being extended."
     )
+    assert df.height > 0, "bundled parquet has zero rows"

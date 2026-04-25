@@ -1,11 +1,11 @@
 """Generate a synthetic ~10y daily OHLCV parquet labelled spy_daily for the MVP demo.
 
 Deterministic (numpy seed=20260424). NOT real SPY data — see dataset
-description in migration 0002. Regenerate anytime by rerunning:
+description in the v1 migration. Regenerate anytime by rerunning:
   uv run python scripts/bundle_spy_data.py
 
 After regenerating, the printed xxh64 content hash MUST be pasted into
-migration 0002's seed INSERT for `dataset_versions.content_hash`. A CI
+the v1 migration's seed INSERT for `dataset_versions.content_hash`. A CI
 test asserts the two stay in sync.
 """
 from __future__ import annotations
@@ -88,8 +88,8 @@ def main() -> None:
     print(f"Wrote {out} ({df.height:,} rows, {size_kb:.1f} KB)")
     print(f"xxh64 content hash: {xxh64}")
     print(
-        "Migration 0002 stores this hash in dataset_versions.content_hash.\n"
-        "If you regenerated, update apps/api/migrations/versions/0002_m3_schema.py "
+        "The v1 migration stores this hash in dataset_versions.content_hash.\n"
+        "If you regenerated, update apps/api/migrations/versions/0001_v1.py "
         "accordingly — the test_bundled_dataset.py test will fail on drift."
     )
 

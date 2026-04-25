@@ -52,14 +52,14 @@ def test_record_read_inserts_lineage_row_and_emits_dataread(
 ) -> None:
     _, rid = strategy_and_run
 
-    # Use the seed dataset_version from migration 0002
+    # Use the seed dataset_version from the v1 migration
     conn = psycopg2.connect(db_url_env)
     try:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT dv.id::text FROM dataset_versions dv "
                 "JOIN datasets d ON d.id = dv.dataset_id "
-                "WHERE d.name = 'ohlcv-spy-daily-synthetic' AND dv.version_tag = 'v1'"
+                "WHERE d.name = 'ohlcv-aapl-daily' AND dv.version_tag = 'v1'"
             )
             dv_id = cur.fetchone()[0]
     finally:
@@ -70,7 +70,7 @@ def test_record_read_inserts_lineage_row_and_emits_dataread(
         run_id=rid,
         dataset_version_id=dv_id,
         as_of=date(2024, 12, 1),
-        filter_predicates={"ticker": "SPY"},
+        filter_predicates={"ticker": "AAPL"},
         content_hash=ch,
         rows_returned=2500,
     )

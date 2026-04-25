@@ -2,7 +2,7 @@
 
 Ported from apps/api/app/audit/log.py (MVP-A archive).
 
-The events table (migration 0002) is the system of record for
+The events table (defined in the v1 migration) is the system of record for
 security- and compliance-relevant events: run lifecycle, data reads,
 strategy registrations, etc.
 
@@ -20,7 +20,7 @@ COMMITTED snapshots allow concurrent transactions to read the same
 "latest row" before either commits, producing duplicate prev_hash
 values.
 
-Schema changes from archive vs. migration 0002:
+Schema changes from archive vs. the v1 migration:
 - Table renamed audit_log → events.
 - id is UUID (not serial int) — still returned by RETURNING id.
 - actor, aggregate_type, aggregate_id columns removed from events;

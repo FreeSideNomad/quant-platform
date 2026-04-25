@@ -55,6 +55,12 @@ def _patch_pyproject_local_dep(project_dir: Path) -> None:
        hyphens kept verbatim), but ``pyproject.toml.j2`` declares
        ``packages = ["src/<name_with_underscores>"]``.  Rename the directory so
        Python imports resolve correctly.
+
+    The previous mlflow-skinny<3.0 pin in this patcher was needed when the
+    server was MLflow 2.16 and the scaffolded venv would otherwise have
+    pulled mlflow 3.x. The server is now 3.11, the SDK pins
+    mlflow-skinny>=3.11,<4.0, and the scaffolded project picks that up
+    transitively — no extra pin required.
     """
     pyproject = project_dir / "pyproject.toml"
     content = pyproject.read_text()
@@ -68,14 +74,6 @@ def _patch_pyproject_local_dep(project_dir: Path) -> None:
     # 2. Allow hatchling to accept the direct reference
     if "[tool.hatch.metadata]" not in content:
         content += "\n[tool.hatch.metadata]\nallow-direct-references = true\n"
-
-    # 3. Pin mlflow-skinny to the 2.x series that matches the compose stack
-    #    (mlflow >= 3.x added ``/api/2.0/mlflow/logged-models`` which our 2.16
-    #    server doesn't support, causing log_model to 404).
-    content = content.replace(
-        '"lightgbm>=4.5"',
-        '"mlflow-skinny>=2.16,<3.0",\n  "lightgbm>=4.5"',
-    )
 
     pyproject.write_text(content)
 

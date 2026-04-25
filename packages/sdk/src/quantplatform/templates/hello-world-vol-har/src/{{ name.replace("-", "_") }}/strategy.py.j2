@@ -1,4 +1,4 @@
-"""{{ name }} — {{ description or "HAR-style realized-variance forecast on SPY daily OHLCV" }}.
+"""{{ name }} — {{ description or "HAR-style realized-variance forecast on AAPL daily OHLCV" }}.
 
 Author: {{ author or "you" }} ({{ year or "2026" }})
 """
@@ -51,7 +51,7 @@ def main() -> None:
         strategy_id=os.environ["PQ_STRATEGY_ID"],
         as_of=os.environ.get("PQ_AS_OF"),
     ):
-        df = data.ohlcv(ticker="SPY")
+        df = data.ohlcv(ticker="AAPL")
         VolHAR().train_and_validate(df)
 
 
