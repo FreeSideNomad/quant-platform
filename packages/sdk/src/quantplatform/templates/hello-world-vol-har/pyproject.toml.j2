@@ -5,10 +5,8 @@ description = "{{ description or "HAR-style realized-variance forecast" }}"
 requires-python = ">=3.12"
 dependencies = [
   # Pre-M8 (no PyPI publish): pull quantplatform from the public GitHub repo.
-  # During in-flight milestones, ref points at the feature branch that hasn't
-  # merged yet. The M3-merge commit will flip this to `@main`. After M8 the
-  # whole thing becomes a plain "quantplatform" PyPI dep.
-  "quantplatform @ git+https://github.com/FreeSideNomad/quant-platform.git@feat/m3-sdk-local-runs#subdirectory=packages/sdk",
+  # M3+ ships on main; M8 flips this to a plain "quantplatform" PyPI dep.
+  "quantplatform @ git+https://github.com/FreeSideNomad/quant-platform.git@main#subdirectory=packages/sdk",
   "lightgbm>=4.5",
   "polars-lts-cpu>=1.8",
 ]
