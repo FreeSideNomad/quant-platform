@@ -105,6 +105,36 @@ def test_train_and_validate_logs_mlflow_and_emits_modeltrained(
         conn.close()
 
 
+def test_logged_pyfunc_roundtrips_with_pandas_input(
+    db_url_env: str, strategy_row_and_mlflow: str
+) -> None:
+    """The logged pyfunc must be loadable by mlflow.pyfunc.load_model and
+    callable with a pandas DataFrame — that's the contract MLflow's serving
+    layer uses. Asserting the in-process predict works isn't enough; we
+    need the wrapper to survive serialization + a fresh-process load."""
+    import mlflow.pyfunc
+
+    sid = strategy_row_and_mlflow
+    df = _synthetic_df(n_days=1500)
+
+    with run.start(strategy_id=sid, as_of="2022-12-31"):
+        strategy = _TrivialStrategy()
+        summary = strategy.train_and_validate(df)
+
+    model_uri = summary["mlflow_model_uri"]
+    loaded = mlflow.pyfunc.load_model(model_uri)
+
+    # MLflow's serving layer hands predict() a pandas DataFrame matching
+    # the recorded signature. Convert via the same boundary helper the SDK
+    # uses (avoids pyarrow dep on round-trip).
+    import pandas as pd
+    raw_input_pd = pd.DataFrame({c: df.head(60)[c].to_numpy() for c in df.columns})
+
+    preds = loaded.predict(raw_input_pd)
+    assert preds is not None
+    assert len(preds) > 0, "expected at least one prediction row"
+
+
 def test_train_and_validate_raises_on_too_few_folds(
     db_url_env: str, strategy_row_and_mlflow: str
 ) -> None:

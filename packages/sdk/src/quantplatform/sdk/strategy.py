@@ -25,14 +25,40 @@ from quantplatform.validation.walk_forward import WalkForwardConfig, fold_dates
 def _pl_to_pd(df: pl.DataFrame) -> pd.DataFrame:
     """Polars -> pandas without pyarrow.
 
-    `polars.DataFrame.to_pandas()` always goes through pyarrow (see
-    `polars/dataframe/frame.py`'s `_to_pandas_without_object_columns`),
-    which would force a ~50MB transitive dep on every quantplatform
-    install just for sklearn/LightGBM feature-name preservation. The
-    manual column-by-column copy below is enough for numeric feature
-    matrices, which is all this code path ever sees.
+    Both `polars.DataFrame.to_pandas()` and `polars.from_pandas()` go
+    through pyarrow when any column has a non-trivial dtype, which
+    would force a ~50MB transitive dep on every quantplatform install
+    just for sklearn/LightGBM feature-name preservation and for the
+    MLflow signature boundary. The manual column-by-column copy below
+    handles the dtypes this code path actually sees: numeric (Float64,
+    Int64), Date / Datetime (cast to a numpy-compatible resolution),
+    Boolean, Utf8. Per the SDK design policy: the polars↔pandas
+    boundary is one helper, not a dep. If a future feature path needs
+    Categorical / Decimal / Object, add pyarrow as a dep — don't grow
+    this helper.
     """
-    return pd.DataFrame({c: df[c].to_numpy() for c in df.columns})
+    out: dict[str, np.ndarray] = {}
+    for c in df.columns:
+        s = df[c]
+        # pl.Date converts to numpy as datetime64[D], which round-trips
+        # through pandas fine but breaks `pl.Series` reconstruction on
+        # the way back. Cast to ms-resolution so the round-trip survives.
+        if s.dtype == pl.Date:
+            out[c] = s.cast(pl.Datetime("ms")).to_numpy()
+        else:
+            out[c] = s.to_numpy()
+    return pd.DataFrame(out)
+
+
+def _pd_to_pl(df: pd.DataFrame) -> pl.DataFrame:
+    """Pandas -> polars without pyarrow. Mirror of `_pl_to_pd`.
+
+    Datetime columns at any numpy-supported resolution (`[ms]`, `[us]`,
+    `[ns]`, `[D]` for datetimes only) round-trip cleanly. Non-trivial
+    pandas extension dtypes (Int64, categorical) would need pyarrow —
+    not used in this code path.
+    """
+    return pl.DataFrame({c: df[c].to_numpy() for c in df.columns})
 
 
 DEFAULT_WF_CONFIG = WalkForwardConfig(
@@ -178,28 +204,46 @@ class Strategy(ABC):
             self._fitted_model = final_model
 
             # Pack the feature computation + model as a pyfunc.
-            # The wrapper holds a reference to this Strategy instance (closure),
-            # keeping features + fitted model coupled for inference.
+            #
+            # Per the SDK design policy ("Data-frame library policy" in
+            # docs/superpowers/specs/2026-04-23-quant-mvp-design.md):
+            # the wrapper accepts pandas at the MLflow boundary because
+            # MLflow's signature/serving layer doesn't speak polars
+            # (pandas/numpy/dict/spark/scipy.sparse only). Inside the
+            # wrapper we convert to polars at the user-facing boundary,
+            # since user `features()` is a polars contract.
+            #
+            # The wrapper accepts a RAW input frame (OHLCV-shaped); it
+            # applies user `features()` then `_fitted_model.predict()`.
+            # The MLflow ModelSignature therefore reflects the raw input
+            # shape (the dataset's schema), not the post-features feature
+            # matrix shape — that's the contract serving callers see.
             _strategy = self
             _feature_cols = feature_cols
 
             class _PyFuncWrapper(_mlflow_pyfunc.PythonModel):
-                # MLflow 2.x calls predict with a list of input batches
-                # so it can fan out to a remote serving backend. We accept
-                # the list and operate on the first (only) batch, which
-                # keeps the user's strategy-side `features()` contract a
-                # single DataFrame in / single ndarray out.
-                def predict(
-                    self, context: Any, model_input: list[pl.DataFrame]
-                ) -> np.ndarray:
-                    batch = model_input[0]
+                def predict(self, context: Any, model_input: pd.DataFrame) -> np.ndarray:  # type: ignore[override]
+                    batch = _pd_to_pl(model_input)
                     feats = _strategy.features(batch)
                     X = _pl_to_pd(feats.select(_feature_cols))
                     return _strategy._fitted_model.predict(X)
 
+            # Build an explicit ModelSignature from a real raw-input slice
+            # so MLflow records the wrapper's actual input/output shape.
+            # Slice size = max walk-forward lookback + a few rows so
+            # `features()` can compute rolling stats and drop_nulls
+            # without producing an empty frame (the slice is run through
+            # the wrapper once by log_model to validate the signature).
+            wrapper = _PyFuncWrapper()
+            input_example = _pl_to_pd(df.head(60))
+            sample_output = wrapper.predict(None, input_example)
+            signature = mlflow.models.infer_signature(input_example, sample_output)
+
             _mlflow_pyfunc.log_model(
                 artifact_path="model",
-                python_model=_PyFuncWrapper(),
+                python_model=wrapper,
+                signature=signature,
+                input_example=input_example,
             )
             mlflow_model_uri = f"runs:/{mlflow_run_id}/model"
 

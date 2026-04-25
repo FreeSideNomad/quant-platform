@@ -205,6 +205,13 @@ Key SDK guarantees:
 
 Ergonomic target: hello-world under 40 lines of user-written code. Benchmarked against Modal's decorator style — ours must not be wordier.
 
+##### Data-frame library policy
+
+- **User-facing API is polars.** `data.ohlcv()`, `Strategy.features()`, `Strategy.target()` all take and return `pl.DataFrame` / `pl.Series`. We pick polars for the user transformation layer because: (1) rolling/shift/groupby on numeric data is 5–10× faster than pandas at the row counts M5+ workloads will hit (intraday tick data, 10⁷ rows × parallel strategies); (2) polars dtypes are strict — `Float64` stays `Float64` instead of silently degrading to `object` when a missing value appears; (3) the expression API (`pl.col("close").rolling_mean(5)`) composes cleanly into multi-step pipelines; (4) Arrow-native I/O makes parquet reads zero-copy.
+- **Boundary to MLflow / sklearn / serving is pandas.** MLflow's accepted signature input types are `pandas.DataFrame`, `pandas.Series`, `dict[str, numpy.ndarray]`, `numpy.ndarray`, `pyspark.sql.DataFrame`, and `scipy.sparse.{csr,csc}_matrix` ([MLflow signatures docs](https://mlflow.org/docs/latest/ml/model/signatures/)). Polars isn't in the list. sklearn likewise wants pandas to preserve feature names through `feature_names_in_`. We convert at the boundary via the `_pl_to_pd()` helper in `quantplatform.sdk.strategy` — one column-copy per call, microseconds, no transitive `pyarrow` dep.
+- **The boundary is one helper, not a wrapper class.** Don't bake polars-vs-pandas into a `Dataset` / `TypedFrame` wrapper. The polars frame already carries its own schema (`df.schema`); the dataset's content_hash and dataset_version_id are persisted to `lineage_reads` keyed by `run_id` (`packages/sdk/src/quantplatform/sdk/lineage.py`), reachable from `Strategy` code via that join when needed.
+- **MLflow `ModelSignature` is built from the actual fit input** (a pandas frame produced by `_pl_to_pd`), not from a hard-coded SDK constant. The platform never carries dataset-shape constants — those live on `dataset_versions.schema_json` per registered dataset version. Strategies observe their fit input's schema; they don't assert one.
+
 #### 6.1.2 CLI surface (MVP = 6 commands)
 
 | Command | Purpose |
