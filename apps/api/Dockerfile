@@ -13,6 +13,12 @@ COPY pyproject.toml ./
 COPY src ./src
 COPY migrations ./migrations
 COPY alembic.ini ./
+# Bundled dataset metadata (aapl_daily.meta.json) is read by the v1
+# migration at upgrade time. The parquet itself is uploaded to MinIO by
+# the minio-init service via bind-mount in docker-compose.yml; the api
+# image only needs the small sidecar JSON for the migration to register
+# content_hash + schema_json.
+COPY data ./data
 
 # Install deps
 RUN uv pip install --system --no-cache .

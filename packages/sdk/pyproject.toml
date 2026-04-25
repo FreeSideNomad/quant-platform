@@ -1,6 +1,6 @@
 [project]
 name = "quantplatform"
-version = "0.4.1"
+version = "0.4.2"
 description = "Quant Platform SDK + pq CLI"
 requires-python = ">=3.12"
 dependencies = [

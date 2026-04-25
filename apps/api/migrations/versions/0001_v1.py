@@ -6,11 +6,12 @@ two separate migrations (0001_initial creating only the pgmq extension,
 v1 migration before any external user state existed. Future schema
 changes land as new revisions on top of this one.
 
-The bundled dataset's `content_hash` and `schema_json` are derived from
-the parquet bytes at upgrade time — the parquet is the single source
-of truth, so drift between the registered metadata and the actual data
-is structurally impossible. Refresh the parquet via
-`scripts/refresh_aapl_data.py`; nothing in this file needs editing.
+The bundled dataset's `content_hash` and `schema_json` come from a
+sidecar JSON file (`aapl_daily.meta.json`) written by the same fetch
+that produced the parquet — single coherent artifact, no drift
+possible. The migration container only needs stdlib + alembic to read
+it, no polars / xxhash bloat. Refresh both files via
+`scripts/refresh_aapl_data.py`; nothing in this migration needs editing.
 
 Revision ID: 0001_v1
 Revises:
@@ -21,9 +22,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import polars as pl
 import sqlalchemy as sa
-import xxhash
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
@@ -32,11 +31,12 @@ down_revision = None
 branch_labels = None
 depends_on = None
 
-# Path to the bundled parquet. This file ships with the repo / docker image;
-# the migration container reads it at upgrade time to compute the content
-# hash and schema that get registered in `datasets` + `dataset_versions`.
-# parents: [0]=versions/ [1]=migrations/ [2]=api/ — so api/data/<file>.
-_BUNDLED_PARQUET = Path(__file__).resolve().parents[2] / "data" / "aapl_daily.parquet"
+# Path to the bundled dataset metadata sidecar (written alongside the
+# parquet by scripts/refresh_aapl_data.py). The api / migrations
+# container has only stdlib + alembic — reading JSON keeps the
+# container slim. parents: [0]=versions/ [1]=migrations/ [2]=api/
+_DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+_BUNDLED_META = _DATA_DIR / "aapl_daily.meta.json"
 
 
 def upgrade() -> None:
@@ -282,19 +282,18 @@ def upgrade() -> None:
     # Seed the bundled demo dataset. Storage URI points at MinIO; the
     # actual upload is done by the minio-init one-shot service on `pq up`.
     #
-    # content_hash and schema_json are derived from the parquet bytes
-    # at upgrade time — single source of truth, no drift possible.
-    if not _BUNDLED_PARQUET.is_file():
+    # content_hash + schema come from the sidecar JSON written by the
+    # refresh script — both files ship together; drift is caught by
+    # apps/api/tests/test_bundled_dataset.py (which runs in a test env
+    # that has polars + xxhash to verify against the parquet bytes).
+    if not _BUNDLED_META.is_file():
         raise FileNotFoundError(
-            f"Bundled parquet not found at {_BUNDLED_PARQUET}. The migration "
-            f"container expects apps/api/data/aapl_daily.parquet to be present. "
+            f"Bundled dataset metadata not found at {_BUNDLED_META}. "
             f"Refresh via `uv run python scripts/refresh_aapl_data.py` (maintainer)."
         )
-    parquet_bytes = _BUNDLED_PARQUET.read_bytes()
-    content_hash_hex = xxhash.xxh64(parquet_bytes).hexdigest()
-    schema_json = json.dumps(
-        {col: str(dtype) for col, dtype in pl.read_parquet(_BUNDLED_PARQUET).schema.items()}
-    )
+    meta = json.loads(_BUNDLED_META.read_text())
+    content_hash_hex = meta["content_hash_hex"]
+    schema_json = json.dumps(meta["schema"])
 
     op.execute(
         sa.text(

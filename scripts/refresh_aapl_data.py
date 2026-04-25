@@ -32,8 +32,10 @@ import polars as pl
 import xxhash
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-OUT_PARQUET = REPO_ROOT / "apps" / "api" / "data" / "aapl_daily.parquet"
-PROVENANCE_PATH = REPO_ROOT / "apps" / "api" / "data" / "PROVENANCE.md"
+DATA_DIR = REPO_ROOT / "apps" / "api" / "data"
+OUT_PARQUET = DATA_DIR / "aapl_daily.parquet"
+META_PATH = DATA_DIR / "aapl_daily.meta.json"
+PROVENANCE_PATH = DATA_DIR / "PROVENANCE.md"
 
 KAGGLE_DATASET = "jacksoncrow/stock-market-dataset"
 KAGGLE_FILE_PATH = "stocks/AAPL.csv"
@@ -102,11 +104,27 @@ def main() -> None:
     content_hash = xxhash.xxh64(OUT_PARQUET.read_bytes()).hexdigest()
     schema = {col: str(dtype) for col, dtype in df.schema.items()}
 
+    # Sidecar JSON consumed by the v1 migration. The migration container
+    # only has stdlib + sqlalchemy/alembic — no polars, no xxhash — so it
+    # reads the sidecar instead of recomputing from parquet bytes. Both
+    # files come from this same fetch and ship together; drift between
+    # them is caught by apps/api/tests/test_bundled_dataset.py.
+    meta = {
+        "ticker": TICKER,
+        "content_hash_hex": content_hash,
+        "schema": schema,
+        "rows": df.height,
+        "date_min": str(df["date"].min()),
+        "date_max": str(df["date"].max()),
+    }
+    META_PATH.write_text(json.dumps(meta, indent=2) + "\n")
+
     print(
         f"\nWrote {OUT_PARQUET} ({df.height:,} rows, {size_kb:.1f} KB)\n"
-        f"  date range: {df['date'].min()} → {df['date'].max()}\n"
+        f"  date range: {meta['date_min']} → {meta['date_max']}\n"
         f"  xxh64 content hash: {content_hash}\n"
         f"  schema: {json.dumps(schema)}\n"
+        f"Wrote sidecar metadata at {META_PATH}\n"
     )
 
     # Update / write provenance sidecar
@@ -133,10 +151,9 @@ def main() -> None:
     PROVENANCE_PATH.write_text(provenance)
     print(f"Wrote provenance sidecar at {PROVENANCE_PATH}")
     print(
-        "\nNo manual paste needed: the v1 migration reads the parquet at upgrade "
-        "time and derives content_hash + schema_json directly from it. The values "
-        "printed above match what will be registered in `datasets` + "
-        "`dataset_versions` on the next `pq up`."
+        "\nNo manual paste needed: the v1 migration reads the sidecar JSON at "
+        "upgrade time. Both files (parquet + meta.json) ship together as a "
+        "coherent unit; drift is caught by apps/api/tests/test_bundled_dataset.py."
     )
 
 
