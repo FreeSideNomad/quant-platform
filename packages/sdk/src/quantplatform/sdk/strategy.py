@@ -128,9 +128,12 @@ class Strategy(ABC):
                     continue
 
                 estimator = self.model()
-                X_train = train_slice.select(feature_cols).to_numpy()
+                # Convert via pandas so sklearn/LightGBM can capture feature
+                # names on fit AND see them on predict — otherwise sklearn
+                # logs "X does not have valid feature names" each fold.
+                X_train = train_slice.select(feature_cols).to_pandas()
                 y_train = train_slice["_y"].to_numpy()
-                X_test = test_slice.select(feature_cols).to_numpy()
+                X_test = test_slice.select(feature_cols).to_pandas()
                 y_test = test_slice["_y"].to_numpy()
 
                 estimator.fit(X_train, y_train)
@@ -149,7 +152,7 @@ class Strategy(ABC):
             mlflow.log_metric("std_rmse", std_rmse)
 
             # Fit final model on the full aligned dataset for pyfunc packaging
-            X_full = aligned.select(feature_cols).to_numpy()
+            X_full = aligned.select(feature_cols).to_pandas()
             y_full = aligned["_y"].to_numpy()
             final_model = self.model()
             final_model.fit(X_full, y_full)
@@ -164,7 +167,7 @@ class Strategy(ABC):
             class _PyFuncWrapper(_mlflow_pyfunc.PythonModel):
                 def predict(self, context: Any, model_input: pl.DataFrame) -> np.ndarray:  # type: ignore[override]
                     feats = _strategy.features(model_input)
-                    X = feats.select(_feature_cols).to_numpy()
+                    X = feats.select(_feature_cols).to_pandas()
                     return _strategy._fitted_model.predict(X)
 
             _mlflow_pyfunc.log_model(
