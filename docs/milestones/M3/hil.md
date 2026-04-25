@@ -93,10 +93,17 @@ branch's tip after sign-off.
    - Subprocess logs: walk-forward folds, LightGBM training
    - `Strategy completed successfully.`
 
-6. **MLflow UI** — open http://localhost:15000. Find:
-   - Experiment `quant-platform/m3-hello`
-   - A run with logged metrics `fold_0_rmse` … `fold_N_rmse`, `mean_rmse`, `std_rmse`
-   - A registered pyfunc model artifact at `model/`
+6. **MLflow UI** — open http://localhost:15000.
+   - Click the experiment `quant-platform/m3-hello`.
+   - **MLflow 3.x defaults to the "GenAI" tab; classical-ML runs live
+     under "Training runs"** in the left sidebar (or switch to the
+     "Model training" tab at the top). The default landing page reads
+     "0 Traces" because traces are LLM-only — that is expected, NOT a
+     missing-data bug. (Direct URL pattern that always works:
+     `http://localhost:15000/#/experiments/<id>/runs/<run_id>`.)
+   - In the Training runs list, find a run with logged metrics
+     `fold_0_rmse` … `fold_N_rmse`, `mean_rmse`, `std_rmse`.
+   - A registered pyfunc model artifact at `model/`.
 
 7. **Postgres inspection**:
    ```bash
