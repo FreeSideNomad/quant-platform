@@ -6,6 +6,8 @@ import subprocess
 import typer
 from rich.console import Console
 
+from quantplatform.cli._pqhome import require_platform_dir
+
 console = Console()
 
 
@@ -76,12 +78,18 @@ def up(
     stack at some point, and the pinned container_name values then
     conflict on boot.
     """
+    try:
+        platform_dir = require_platform_dir()
+    except RuntimeError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=1)
+
     _clean_stale_pq_containers()
     cmd = ["docker", "compose", "up", "-d"]
     if not no_build:
         cmd.append("--build")
-    console.print("[bold]Starting Quant Platform stack...[/bold]")
-    result = subprocess.run(cmd, check=False)
+    console.print(f"[bold]Starting Quant Platform stack[/bold] (from {platform_dir})...")
+    result = subprocess.run(cmd, cwd=platform_dir, check=False)
     if result.returncode != 0:
         console.print("[red]docker compose up failed.[/red]")
         raise typer.Exit(code=result.returncode)

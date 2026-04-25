@@ -108,8 +108,12 @@ def test_pq_run_container_mode_invokes_docker_compose_run(
     runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     project = _write_project(tmp_path, "container-strat")
-    # Create a fake docker-compose.yml in tmp_path so _find_compose_dir finds it
-    (tmp_path / "docker-compose.yml").write_text("services: {}\n")
+    # _find_compose_dir now reads from ~/.pq/config.toml via require_platform_dir.
+    # Mock that to return tmp_path so the test is hermetic.
+    monkeypatch.setattr(
+        "quantplatform.cli.run._find_compose_dir",
+        lambda project_dir: tmp_path,
+    )
 
     with patch("quantplatform.cli.run.httpx.post") as post, \
          patch("quantplatform.cli.run.subprocess.run") as sub_run, \
@@ -139,7 +143,10 @@ def test_pq_run_container_mode_with_debug_uses_debugpy(
     runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     project = _write_project(tmp_path, "dbg-container")
-    (tmp_path / "docker-compose.yml").write_text("services: {}\n")
+    monkeypatch.setattr(
+        "quantplatform.cli.run._find_compose_dir",
+        lambda project_dir: tmp_path,
+    )
 
     with patch("quantplatform.cli.run.httpx.post") as post, \
          patch("quantplatform.cli.run.subprocess.run") as sub_run, \

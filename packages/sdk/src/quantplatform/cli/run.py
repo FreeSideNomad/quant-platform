@@ -61,25 +61,17 @@ def _api_base_url() -> str:
 
 
 def _find_compose_dir(project_dir: Path) -> Path:
-    """Locate the quant-platform repo root (where docker-compose.yml lives).
+    """Locate the quant-platform repo root for `pq run --container`.
 
-    Strategy: walk up from project_dir. First candidate with docker-compose.yml wins.
-    Fallback: use QP_COMPOSE_DIR env var if set. Raises FileNotFoundError otherwise.
+    Reads from `~/.pq/config.toml` (set by `pq init`). The `project_dir`
+    arg is unused but kept for backward compatibility with the historical
+    walk-up call site; if the user hasn't run `pq init`, raises with a
+    helpful message.
     """
-    env_dir = os.environ.get("QP_COMPOSE_DIR")
-    if env_dir:
-        return Path(env_dir)
-    cur = project_dir.resolve()
-    for _ in range(8):
-        if (cur / "docker-compose.yml").is_file():
-            return cur
-        cur = cur.parent
-        if cur == cur.parent:  # reached filesystem root
-            break
-    raise FileNotFoundError(
-        "could not find docker-compose.yml by walking up from the project dir. "
-        "Set QP_COMPOSE_DIR to the quant-platform repo root."
-    )
+    from quantplatform.cli._pqhome import require_platform_dir
+
+    del project_dir  # no longer used; configured location is authoritative
+    return require_platform_dir()
 
 
 def _run_container_mode(

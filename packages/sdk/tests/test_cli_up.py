@@ -1,13 +1,18 @@
 """Unit tests for `pq up` — mocks docker compose subprocess."""
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 from quantplatform.cli.main import app
 
 
+_FAKE_PLATFORM = Path("/fake/platform")
+
+
 def test_pq_up_invokes_docker_compose_with_build(runner) -> None:
     with (
+        patch("quantplatform.cli.up.require_platform_dir", return_value=_FAKE_PLATFORM),
         patch("quantplatform.cli.up._clean_stale_pq_containers"),
         patch("quantplatform.cli.up.subprocess.run") as run,
     ):
@@ -21,10 +26,13 @@ def test_pq_up_invokes_docker_compose_with_build(runner) -> None:
     assert "-d" in args
     # --build is the default so source changes (api, ui, migrations) always land.
     assert "--build" in args
+    # subprocess runs in the configured platform dir, not cwd
+    assert run.call_args.kwargs["cwd"] == _FAKE_PLATFORM
 
 
 def test_pq_up_no_build_flag_skips_rebuild(runner) -> None:
     with (
+        patch("quantplatform.cli.up.require_platform_dir", return_value=_FAKE_PLATFORM),
         patch("quantplatform.cli.up._clean_stale_pq_containers"),
         patch("quantplatform.cli.up.subprocess.run") as run,
     ):
@@ -37,6 +45,7 @@ def test_pq_up_no_build_flag_skips_rebuild(runner) -> None:
 
 def test_pq_up_propagates_nonzero_exit(runner) -> None:
     with (
+        patch("quantplatform.cli.up.require_platform_dir", return_value=_FAKE_PLATFORM),
         patch("quantplatform.cli.up._clean_stale_pq_containers"),
         patch("quantplatform.cli.up.subprocess.run") as run,
     ):
@@ -45,10 +54,23 @@ def test_pq_up_propagates_nonzero_exit(runner) -> None:
     assert result.exit_code == 2
 
 
+def test_pq_up_errors_when_platform_dir_not_configured(runner) -> None:
+    with patch(
+        "quantplatform.cli.up.require_platform_dir",
+        side_effect=RuntimeError("platform directory not configured. Run `pq init`."),
+    ):
+        result = runner.invoke(app, ["up"])
+    assert result.exit_code == 1
+    assert "pq init" in result.output
+
+
 def test_pq_up_cleans_stale_pq_containers_before_starting(runner) -> None:
     """Stopped pq-* orphan containers should be removed before compose up."""
-    with patch("quantplatform.cli.up.subprocess.run") as run:
-        # Three subprocess.run calls in order:
+    with (
+        patch("quantplatform.cli.up.require_platform_dir", return_value=_FAKE_PLATFORM),
+        patch("quantplatform.cli.up.subprocess.run") as run,
+    ):
+        # subprocess.run calls:
         # 1. docker ps -a --filter name=pq- ...
         # 2. docker rm -f pq-foo pq-bar ...  (only if something to remove)
         # 3. docker compose up -d --build
@@ -64,12 +86,9 @@ def test_pq_up_cleans_stale_pq_containers_before_starting(runner) -> None:
         result = runner.invoke(app, ["up"])
     assert result.exit_code == 0
     calls = [c.args[0] for c in run.call_args_list]
-    # First call: ps probe
     assert calls[0][:2] == ["docker", "ps"]
-    # Somewhere a `docker rm -f pq-postgres ...` should appear
     rm_calls = [c for c in calls if c[:3] == ["docker", "rm", "-f"]]
     assert rm_calls, f"expected a `docker rm -f` call after stale ps probe; got {calls}"
     assert "pq-postgres" in rm_calls[0]
     assert "pq-mock-oidc" in rm_calls[0]
-    # Final call: compose up
     assert calls[-1][:2] == ["docker", "compose"]
