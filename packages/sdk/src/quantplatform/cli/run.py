@@ -35,6 +35,17 @@ PLATFORM_ENV = {
     "PQ_API_URL": "http://localhost:18000",
 }
 
+# Env vars that MLflow's S3 artifact store + boto3 read directly. We can't
+# rename these — they're third-party. Always force them to point at the
+# local MinIO so a strategy run never accidentally talks to real AWS using
+# the user's day-job credentials. Applied AFTER os.environ in the merge so
+# they always win, unlike PQ_* (which the user can override).
+MLFLOW_S3_ENV = {
+    "AWS_ACCESS_KEY_ID": "minioadmin",
+    "AWS_SECRET_ACCESS_KEY": "minioadmin",
+    "MLFLOW_S3_ENDPOINT_URL": "http://localhost:19000",
+}
+
 
 def _resolve_project_dir(name: str | None) -> Path:
     """Find the project dir by looking for pq.toml.
@@ -246,6 +257,7 @@ def run(
     env = {
         **PLATFORM_ENV,
         **os.environ,
+        **MLFLOW_S3_ENV,
         "PQ_STRATEGY_ID": strategy_id,
         "PQ_AS_OF": as_of_str,
     }

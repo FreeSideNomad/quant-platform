@@ -165,7 +165,11 @@ class Strategy(ABC):
             _feature_cols = feature_cols
 
             class _PyFuncWrapper(_mlflow_pyfunc.PythonModel):
-                def predict(self, context: Any, model_input: pl.DataFrame) -> np.ndarray:  # type: ignore[override]
+                # No type hint on model_input: MLflow's schema-from-type-hint
+                # inference wants `list[pl.DataFrame]` (it assumes batched
+                # input). Without the hint MLflow leaves schema inference to
+                # an explicit input_example, which the strategy may add later.
+                def predict(self, context, model_input):  # type: ignore[override]
                     feats = _strategy.features(model_input)
                     X = feats.select(_feature_cols).to_pandas()
                     return _strategy._fitted_model.predict(X)
