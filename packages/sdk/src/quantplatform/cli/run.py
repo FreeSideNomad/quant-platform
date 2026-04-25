@@ -1,4 +1,10 @@
-"""`pq run <name>` — execute a strategy in host mode (container mode via --container)."""
+"""`pq run` — execute a strategy in host mode (container mode via --container).
+
+`pq run` defaults to the project rooted at the current working directory
+(detected by `pq.toml`). An explicit `pq run <name>` resolves to `./<name>/`
+for convenience, but the canonical workflow is `cd <project> && pq run`.
+"""
+
 from __future__ import annotations
 
 import os
@@ -15,6 +21,21 @@ from rich.console import Console
 console = Console()
 
 
+# Canonical platform endpoints injected into the strategy subprocess so the
+# SDK can find Postgres / MinIO / MLflow without the user having to know
+# what `pq up` exposes. All keys are PQ_-prefixed to avoid clashing with
+# any DATABASE_URL / S3_* / MLFLOW_TRACKING_URI the user may have in their
+# shell for unrelated work. Ports match the spec-codified host bindings.
+PLATFORM_ENV = {
+    "PQ_DATABASE_URL": "postgresql://qp:qp@localhost:15432/qp",
+    "PQ_S3_ENDPOINT_URL": "http://localhost:19000",
+    "PQ_S3_ACCESS_KEY": "minioadmin",
+    "PQ_S3_SECRET_KEY": "minioadmin",
+    "PQ_MLFLOW_TRACKING_URI": "http://localhost:15000",
+    "PQ_API_URL": "http://localhost:18000",
+}
+
+
 def _resolve_project_dir(name: str | None) -> Path:
     """Find the project dir by looking for pq.toml.
 
@@ -28,8 +49,9 @@ def _resolve_project_dir(name: str | None) -> Path:
         if (candidate / "pq.toml").is_file():
             return candidate
     raise FileNotFoundError(
-        f"no pq.toml found in {cwd} or {cwd / (name or '<name>')}. "
-        f"Run from a project directory or scaffold with `pq new strategy {name or '<name>'}`."
+        f"no pq.toml found in {cwd}"
+        + (f" or {cwd / name}" if name else "")
+        + ". Run from inside a project directory, or scaffold one with `pq new <project>`."
     )
 
 
@@ -42,7 +64,10 @@ def _git_sha(project_dir: Path) -> str:
     try:
         r = subprocess.run(
             ["git", "rev-parse", "HEAD"],
-            cwd=project_dir, capture_output=True, text=True, timeout=3,
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+            timeout=3,
         )
         return r.stdout.strip() or "unknown"
     except Exception:
@@ -57,7 +82,7 @@ def _uv_lock_hash(project_dir: Path) -> str:
 
 
 def _api_base_url() -> str:
-    return os.environ.get("QP_API_URL", "http://localhost:18000")
+    return os.environ.get("PQ_API_URL", PLATFORM_ENV["PQ_API_URL"])
 
 
 def _find_compose_dir(project_dir: Path) -> Path:
@@ -86,10 +111,14 @@ def _run_container_mode(
     inner_cmd: list[str]
     if debug:
         inner_cmd = [
-            "python", "-m", "debugpy",
-            "--listen", "0.0.0.0:5678",
+            "python",
+            "-m",
+            "debugpy",
+            "--listen",
+            "0.0.0.0:5678",
             "--wait-for-client",
-            "-m", entry_module,
+            "-m",
+            entry_module,
         ]
         console.print(
             "[yellow]Worker will wait for debugger on localhost:5678; attach your IDE now.[/yellow]"
@@ -100,30 +129,45 @@ def _run_container_mode(
     compose_dir = _find_compose_dir(project_dir)
 
     cmd = [
-        "docker", "compose", "--profile", "worker", "run",
+        "docker",
+        "compose",
+        "--profile",
+        "worker",
+        "run",
         "--rm",
         "--service-ports",
-        "--volume", f"{project_dir.resolve()}:/workspace:ro",
-        "--workdir", "/workspace",
+        "--volume",
+        f"{project_dir.resolve()}:/workspace:ro",
+        "--workdir",
+        "/workspace",
         "worker",
         *inner_cmd,
     ]
     console.print(f"[bold]Container exec:[/bold] {' '.join(cmd)}")
 
+    # Container picks up its own PQ_* via docker-compose env. We only need
+    # to forward the per-run identifiers here.
     env = {
         **os.environ,
-        "QP_STRATEGY_ID": strategy_id,
-        "QP_AS_OF": as_of,
+        "PQ_STRATEGY_ID": strategy_id,
+        "PQ_AS_OF": as_of,
     }
     result = subprocess.run(cmd, cwd=compose_dir, env=env)
     return result.returncode
 
 
 def run(
-    name: str | None = typer.Argument(None, help="Strategy name (project directory). Defaults to cwd project."),
+    name: str | None = typer.Argument(
+        None,
+        help="Optional project name (./<name>/). Default: cwd if it has pq.toml.",
+    ),
     as_of: str | None = typer.Option(None, "--as-of", help="Run date YYYY-MM-DD (default: today)"),
-    debug: bool = typer.Option(False, "--debug", help="Start strategy under debugpy; wait for IDE attach"),
-    container: bool = typer.Option(False, "--container", help="Run inside worker container via docker compose"),
+    debug: bool = typer.Option(
+        False, "--debug", help="Start strategy under debugpy; wait for IDE attach"
+    ),
+    container: bool = typer.Option(
+        False, "--container", help="Run inside worker container via docker compose"
+    ),
 ) -> None:
     """Execute a strategy locally."""
     try:
@@ -193,15 +237,32 @@ def run(
     # standard isolated Python-project workflow. The project's pyproject.toml
     # declares `quantplatform` as a dep; how it resolves (PyPI / git / path)
     # is the user's choice recorded there.
+    #
+    # Inject canonical platform endpoints (PQ_*) so the SDK can reach
+    # Postgres / MinIO / MLflow without the user setting env. PQ_-prefixed
+    # to avoid clashing with any DATABASE_URL / S3_* the user has in their
+    # shell for unrelated work. The user's own PQ_* overrides — useful if
+    # they're targeting a non-default port via custom docker-compose.
     env = {
+        **PLATFORM_ENV,
         **os.environ,
-        "QP_STRATEGY_ID": strategy_id,
-        "QP_AS_OF": as_of_str,
+        "PQ_STRATEGY_ID": strategy_id,
+        "PQ_AS_OF": as_of_str,
     }
 
     if debug:
-        cmd = ["uv", "run", "python", "-m", "debugpy", "--listen", "5678",
-               "--wait-for-client", "-m", entry_module]
+        cmd = [
+            "uv",
+            "run",
+            "python",
+            "-m",
+            "debugpy",
+            "--listen",
+            "5678",
+            "--wait-for-client",
+            "-m",
+            entry_module,
+        ]
         console.print("[yellow]Waiting for debugger to attach on localhost:5678...[/yellow]")
     else:
         cmd = ["uv", "run", "python", "-m", entry_module]

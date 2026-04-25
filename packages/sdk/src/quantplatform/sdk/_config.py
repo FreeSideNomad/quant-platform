@@ -19,7 +19,7 @@ class SDKSettings:
 
 def get_settings() -> SDKSettings:
     return SDKSettings(
-        s3_endpoint_url=os.environ.get("S3_ENDPOINT_URL", "http://localhost:19000"),
-        s3_access_key=os.environ.get("S3_ACCESS_KEY", "minioadmin"),
-        s3_secret_key=os.environ.get("S3_SECRET_KEY", "minioadmin"),
+        s3_endpoint_url=os.environ.get("PQ_S3_ENDPOINT_URL", "http://localhost:19000"),
+        s3_access_key=os.environ.get("PQ_S3_ACCESS_KEY", "minioadmin"),
+        s3_secret_key=os.environ.get("PQ_S3_SECRET_KEY", "minioadmin"),
     )

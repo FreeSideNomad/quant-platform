@@ -94,14 +94,14 @@ def _patch_pyproject_local_dep(project_dir: Path) -> None:
 
 @pytest.fixture(scope="module")
 def scaffold_dir() -> Path:  # type: ignore[return]
-    """Scaffold a throwaway strategy project via `uv run pq new strategy`."""
+    """Scaffold a throwaway strategy project via `pq new`."""
     tmp = Path(f"/tmp/pq-e2e-{uuid.uuid4().hex[:8]}")
     tmp.mkdir()
 
     project_name = "hello-m3"
     result = subprocess.run(
         [
-            str(PQ_BIN), "new", "strategy", project_name,
+            str(PQ_BIN), "new", project_name,
             "--dir", str(tmp / project_name),
         ],
         cwd=REPO_ROOT,
@@ -152,12 +152,14 @@ def test_pq_run_scaffolded_strategy_end_to_end(scaffold_dir: Path) -> None:
     # from within the scaffold dir, so it picks up the scaffold's own venv.
     env = {
         **os.environ,
-        "DATABASE_URL": DB_URL,
-        "MLFLOW_TRACKING_URI": MLFLOW_URL,
-        "QP_API_URL": API_URL,
-        "S3_ENDPOINT_URL": "http://localhost:19000",
-        "S3_ACCESS_KEY": "minioadmin",
-        "S3_SECRET_KEY": "minioadmin",
+        # PQ_* are also injected by `pq run` (PLATFORM_ENV) — we set them here
+        # too so the test is robust to changes in `pq run`'s defaults.
+        "PQ_DATABASE_URL": DB_URL,
+        "PQ_MLFLOW_TRACKING_URI": MLFLOW_URL,
+        "PQ_API_URL": API_URL,
+        "PQ_S3_ENDPOINT_URL": "http://localhost:19000",
+        "PQ_S3_ACCESS_KEY": "minioadmin",
+        "PQ_S3_SECRET_KEY": "minioadmin",
         # boto3/botocore credential env vars for MLflow artifact upload to minio
         "AWS_ACCESS_KEY_ID": "minioadmin",
         "AWS_SECRET_ACCESS_KEY": "minioadmin",
@@ -171,8 +173,8 @@ def test_pq_run_scaffolded_strategy_end_to_end(scaffold_dir: Path) -> None:
     # <cwd>/hello-m3/pq.toml. Using PQ_BIN (monorepo venv) avoids needing `uv run
     # --package` which only works from within the workspace root.
     run_result = subprocess.run(
-        [str(PQ_BIN), "run", "hello-m3"],
-        cwd=scaffold_dir.parent,
+        [str(PQ_BIN), "run"],
+        cwd=scaffold_dir,
         env=env,
         capture_output=True,
         text=True,

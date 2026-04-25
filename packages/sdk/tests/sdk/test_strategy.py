@@ -47,7 +47,7 @@ def strategy_row_and_mlflow(db_url_env: str, tmp_path, monkeypatch: pytest.Monke
     # MLflow local file store (no server required for unit tests)
     mlflow_dir = tmp_path / "mlruns"
     mlflow_dir.mkdir()
-    monkeypatch.setenv("MLFLOW_TRACKING_URI", mlflow_dir.as_uri())
+    monkeypatch.setenv("PQ_MLFLOW_TRACKING_URI", mlflow_dir.as_uri())
 
     conn = psycopg2.connect(db_url_env)
     try:

@@ -101,7 +101,7 @@ class Strategy(ABC):
 
         # Connect to MLflow
         mlflow.set_tracking_uri(
-            os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:15000")
+            os.environ.get("PQ_MLFLOW_TRACKING_URI", "http://localhost:15000")
         )
         experiment_name = f"quant-platform/{self.name}"
         mlflow.set_experiment(experiment_name)

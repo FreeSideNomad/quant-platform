@@ -92,7 +92,7 @@ def test_get_platform_dir_env_overrides_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("PQ_HOME", str(tmp_path / "pqhome"))
-    monkeypatch.setenv("QP_PLATFORM_DIR", "/from/env")
+    monkeypatch.setenv("PQ_PLATFORM_DIR", "/from/env")
 
     # Even with no config file, env should resolve
     from quantplatform.cli._pqhome import get_platform_dir
@@ -103,7 +103,7 @@ def test_require_platform_dir_raises_with_helpful_message(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("PQ_HOME", str(tmp_path / "pqhome"))
-    monkeypatch.delenv("QP_PLATFORM_DIR", raising=False)
+    monkeypatch.delenv("PQ_PLATFORM_DIR", raising=False)
 
     from quantplatform.cli._pqhome import require_platform_dir
     with pytest.raises(RuntimeError, match="not configured.*pq init"):

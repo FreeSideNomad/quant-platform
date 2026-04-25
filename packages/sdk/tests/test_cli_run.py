@@ -64,8 +64,41 @@ def test_pq_run_upserts_strategy_and_spawns_subprocess(runner: CliRunner, tmp_pa
     assert "hello_world.strategy" in cmd
 
     env = sub_run.call_args.kwargs["env"]
-    assert env["QP_STRATEGY_ID"] == "00000000-0000-0000-0000-000000000001"
-    assert "QP_AS_OF" in env
+    assert env["PQ_STRATEGY_ID"] == "00000000-0000-0000-0000-000000000001"
+    assert "PQ_AS_OF" in env
+    # Canonical platform endpoints injected so SDK can reach Postgres / MinIO / MLflow
+    # without the user setting any env. PQ_-prefixed to avoid clash with the user's shell.
+    assert env["PQ_DATABASE_URL"].startswith("postgresql://")
+    assert env["PQ_S3_ENDPOINT_URL"].startswith("http://")
+    assert env["PQ_MLFLOW_TRACKING_URI"].startswith("http://")
+
+
+def test_pq_run_no_args_uses_cwd_project(runner: CliRunner, tmp_path: Path) -> None:
+    """`pq run` with no positional arg resolves to cwd if it has pq.toml."""
+    project = _write_project(tmp_path, "cwd-project")
+
+    with patch("quantplatform.cli.run.httpx.post") as post, \
+         patch("quantplatform.cli.run.subprocess.run") as sub_run, \
+         patch("quantplatform.cli.run._git_sha", return_value="abc"), \
+         patch("quantplatform.cli.run._uv_lock_hash", return_value="x"):
+        post.return_value.status_code = 200
+        post.return_value.json.return_value = {
+            "strategy_id": "00000000-0000-0000-0000-000000000002",
+            "created": True,
+        }
+        post.return_value.raise_for_status.return_value = None
+        sub_run.return_value.returncode = 0
+
+        old = os.getcwd()
+        os.chdir(project)
+        try:
+            result = runner.invoke(app, ["run"])
+        finally:
+            os.chdir(old)
+
+    assert result.exit_code == 0, result.output
+    body = post.call_args.kwargs["json"]
+    assert body["name"] == "cwd-project"
 
 
 def test_pq_run_fails_if_no_pq_toml(runner: CliRunner, tmp_path: Path) -> None:

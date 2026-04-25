@@ -8,7 +8,7 @@ from quantplatform.cli.doctor import doctor as doctor_command
 from quantplatform.cli.down import down as down_command
 from quantplatform.cli.e2e import e2e as e2e_command
 from quantplatform.cli.init import init as init_command
-from quantplatform.cli.new_strategy import new_app
+from quantplatform.cli.new import new as new_command
 from quantplatform.cli.run import run as run_command
 from quantplatform.cli.up import up as up_command
 
@@ -46,4 +46,4 @@ app.command(name="down", help="Stop the local Quant Platform stack (volumes pres
 app.command(name="doctor", help="Verify Docker, uv, Python, and free ports.")(doctor_command)
 app.command(name="run", help="Execute a strategy locally.")(run_command)
 app.command(name="e2e", help="Pre-push: lint + type-check + unit tests + container run.")(e2e_command)
-app.add_typer(new_app, name="new", help="Scaffold new projects.")
+app.command(name="new", help="Scaffold a new strategy project from a template.")(new_command)

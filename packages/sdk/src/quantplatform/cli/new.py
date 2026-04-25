@@ -1,4 +1,11 @@
-"""`pq new strategy <name>` — scaffold a new strategy project from a Jinja template."""
+"""`pq new <project_name> [--template <tmpl>]` — scaffold a project from a Jinja template.
+
+Flat command (no subgroup): the only thing `pq new` creates today is a
+strategy project, so requiring a `strategy` verb is just noise. If we
+ever scaffold something else (e.g. a dataset adapter), it gets its own
+top-level verb (`pq dataset new ...`) rather than retrofitting a subgroup.
+"""
+
 from __future__ import annotations
 
 import shutil
@@ -14,12 +21,11 @@ from rich.console import Console
 
 console = Console()
 
-new_app = typer.Typer(no_args_is_help=True, help="Scaffold new projects.")
 
-
+# Template key → directory name under quantplatform/templates/.
 _TEMPLATE_DIR_BY_NAME = {
-    "vol-har": "hello-world-vol-har",
-    # "returns": "hello-world-returns",  # M4
+    "hello-world": "hello-world-vol-har",
+    # "returns": "hello-world-returns",  # M4 — designed to fail the gate
 }
 
 
@@ -27,7 +33,9 @@ def _git_user_name() -> str:
     try:
         r = subprocess.run(
             ["git", "config", "--get", "user.name"],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True,
+            text=True,
+            timeout=3,
         )
         if r.returncode == 0 and r.stdout.strip():
             return r.stdout.strip()
@@ -44,9 +52,9 @@ def _find_template_dir(template_key: str) -> Path:
             raise NotImplementedError(
                 "the `returns` template lands in M4 (companion expected-to-fail strategy)"
             )
-        raise ValueError(f"unknown template: {template_key!r}. Choose: vol-har")
+        choices = ", ".join(sorted(_TEMPLATE_DIR_BY_NAME))
+        raise ValueError(f"unknown template: {template_key!r}. Choose: {choices}")
 
-    # Resolve via importlib.resources — portable across installed / editable modes.
     templates_root = files("quantplatform").joinpath("templates")
     tdir = Path(str(templates_root)) / template_folder
     if not tdir.is_dir():
@@ -56,14 +64,22 @@ def _find_template_dir(template_key: str) -> Path:
     return tdir
 
 
-@new_app.command("strategy", help="Scaffold a new strategy project.")
-def new_strategy(
-    name: str = typer.Argument(..., help="Project name (e.g. hello-world)"),
-    template: str = typer.Option("vol-har", "--template", "-t", help="Template: vol-har or returns (M4)"),
-    target_dir: Path | None = typer.Option(None, "--dir", "-d", help="Destination; default ./<name>/"),
-    force: bool = typer.Option(False, "--force", "-f", help="Overwrite a non-empty target directory"),
+def new(
+    name: str = typer.Argument(..., help="Project name (e.g. my-strategy). Becomes ./<name>/."),
+    template: str = typer.Option(
+        "hello-world",
+        "--template",
+        "-t",
+        help="Template to scaffold from (default: hello-world).",
+    ),
+    target_dir: Path | None = typer.Option(
+        None, "--dir", "-d", help="Destination; default ./<name>/"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Overwrite a non-empty target directory"
+    ),
 ) -> None:
-    """Render the chosen Jinja template into the target directory."""
+    """Scaffold a new strategy project from a template."""
     # Validate name (conservative: letters, digits, hyphen; no leading digit)
     if not name or not name[0].isalpha() or not all(c.isalnum() or c == "-" for c in name):
         console.print(
@@ -104,7 +120,6 @@ def new_strategy(
     rendered_files: list[Path] = []
     for root, dirs, files_ in _walk_sorted(source):
         rel = root.relative_to(source)
-        # Render any {{...}} in path segments
         if rel.parts:
             rel_rendered = Path(*[_render_segment(seg, env, context) for seg in rel.parts])
         else:
@@ -115,32 +130,26 @@ def new_strategy(
         for fname in files_:
             src_file = root / fname
             if fname.endswith(".j2"):
-                # Render as Jinja
                 rel_template_path = str((rel / fname).as_posix())
                 tmpl = env.get_template(rel_template_path)
                 content = tmpl.render(**context)
-                out_name = fname[:-3]  # strip .j2
-                # Also Jinja-render the output filename in case it contains {{...}}
+                out_name = fname[:-3]
                 out_name = _render_segment(out_name, env, context)
                 out_path = out_dir / out_name
                 out_path.write_text(content)
                 rendered_files.append(out_path)
             else:
-                # Verbatim copy; Jinja-render the filename only
                 out_name = _render_segment(fname, env, context)
                 out_path = out_dir / out_name
                 shutil.copyfile(src_file, out_path)
-                # Preserve executable bit for .githooks/*
                 src_mode = src_file.stat().st_mode
                 if src_mode & stat.S_IEXEC or str(rel).startswith(".githooks"):
                     out_path.chmod(out_path.stat().st_mode | stat.S_IEXEC | stat.S_IRWXU)
                 rendered_files.append(out_path)
 
     console.print(
-        f"[green]Scaffolded {template!r} template into {dest} "
-        f"({len(rendered_files)} files).[/green]"
+        f"[green]✔ Scaffolded {template!r} into {dest} ({len(rendered_files)} files).[/green]"
     )
-    console.print(f"Next: [bold]cd {dest} && pq up && pq run {name}[/bold]")
 
 
 def _walk_sorted(root: Path):

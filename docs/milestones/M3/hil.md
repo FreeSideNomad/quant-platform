@@ -40,13 +40,15 @@ curl -fsSL https://pyquant.io/install.sh | bash       # macOS / Linux
 irm   https://pyquant.io/install.ps1 | iex            # Windows
 ```
 
-Expected last lines:
+Expected output: a single green line.
 
 ```
-✔ pq 0.2.0 installed.
-  Platform: /Users/<you>/.pq/platform
-  Run `pq --help` to get started.
+✔ pq 0.3.0 installed.          # fresh install
+✔ pq 0.2.0 upgraded to 0.3.0.  # if you had a prior install
 ```
+
+Detail (clone, uv tool install, pq init) is appended to
+`~/.pq/logs/install.log` for diagnosis if the line above is red.
 
 If `uv tool install` errors with `Permission denied` symlinking to
 `~/.local/bin/pq`, that directory is root-owned on your machine; fix
@@ -68,11 +70,13 @@ branch's tip after sign-off.
 
 1. **`pq doctor`** — all four checks green (Docker, Compose, Python, Ports).
 
-2. **`pq up`** — stack boots with all services healthy (postgres, minio, mlflow, mock-oidc, api, ui, migrations exited(0)). Budget <90s warm.
+2. **`pq up`** — stack boots with all services healthy (postgres, minio,
+   mlflow, mock-oidc, api, ui; migrations exited(0)). Quiet by default;
+   detail goes to `~/.pq/logs/up-<ts>.log`. Budget <90s warm. Expected
+   one-line output: `✔ Stack started.` (or `✔ Stack already running.`).
 
-3. **`cd /tmp && pq new strategy m3-hello`** (or any cwd you like —
-   `pq new` doesn't depend on the platform repo). Inspect the
-   scaffolded tree:
+3. **`cd /tmp && pq new m3-hello`** (any cwd — `pq new` doesn't depend
+   on the platform repo). Inspect the scaffolded tree:
    - `m3-hello/pq.toml` with `project.name = "m3-hello"`, `project.entry = "m3_hello.strategy:main"`
    - `m3-hello/src/m3_hello/strategy.py` (note underscored directory)
    - `m3-hello/tests/test_strategy.py`, `.vscode/launch.json`, `.idea/runConfigurations/`, `.pre-commit-config.yaml`, `.githooks/pre-push`, `README.md`
@@ -82,7 +86,9 @@ branch's tip after sign-off.
    `git+https://github.com/FreeSideNomad/quant-platform.git@main` and
    pins it in the project's `uv.lock`. Expect <5s on a warm cache.
 
-5. **`pq run m3-hello`** — host-mode run. Watch the console for:
+5. **`pq run`** — host-mode run from inside the project dir (no
+   positional needed; `pq.toml` in cwd identifies the project, dotnet/
+   cargo style). Watch the console for:
    - `Upserting strategy 'm3-hello'...` → `Strategy created: m3-hello (<prefix>)`
    - Subprocess logs: walk-forward folds, LightGBM training
    - `Strategy completed successfully.`
@@ -106,12 +112,12 @@ branch's tip after sign-off.
 
 8. **Debugger attach (container mode)**:
    ```bash
-   pq run m3-hello --container --debug
+   pq run --container --debug
    ```
    In VS Code: "Debug strategy (container)" launch config → click attach → strategy subprocess breaks at the first line inside `main()`. Step through a few lines to confirm.
    If VS Code debug attach fails, fall back to verifying debugpy is listening: `curl -v http://localhost:5678` should get a connection (the protocol isn't HTTP, but the TCP handshake will complete).
 
-9. **`pq e2e m3-hello`** — runs ruff check + format + pyright (best-effort) + pytest + `pq run --container`. Should exit 0 under 90s on a warm run. Reports a summary table.
+9. **`pq e2e`** — runs ruff check + format + pyright (best-effort) + pytest + `pq run --container`. Should exit 0 under 90s on a warm run. Reports a summary table.
 
 ## Decision points (HIL judgement)
 
@@ -120,6 +126,25 @@ branch's tip after sign-off.
 - **Does the debugger attach flow work cleanly in at least one IDE?** VS Code is primary; PyCharm configs are scaffolded but not validated in this HIL.
 - **Is the 90s `pq e2e` budget actually hit on first vs warm run?** Record the times. If warm >90s, flag as a spec concern.
 - **Is the scaffolded project's first `uv sync` reasonable for a quant new to the stack?** The scaffold now resolves `quantplatform` straight from the public GitHub repo with no hand-editing — timing should be <5s on warm cache, <30s cold. Flag if the UX feels wrong for a first-time quant.
+
+## CLI UX overhaul (2026-04-23)
+
+Triggered by feedback during the in-progress HIL run. Behaviour changes:
+
+| What | Before | After |
+|---|---|---|
+| Scaffold | `pq new strategy hello-world` | `pq new hello-world` (`--template hello-world` is the default; the `strategy` subgroup is gone) |
+| Run | `pq run hello-world` from outside the project | `pq run` from inside the project (cwd's `pq.toml` identifies the project, dotnet/cargo style); positional name still accepted for back-compat |
+| Stack up | streams docker compose to terminal | quiet by default; detail in `~/.pq/logs/up-<ts>.log`; pass `--verbose` to stream |
+| Installer | streams clone + uv tool install | quiet; detail in `~/.pq/logs/install.log`; only the version line goes to terminal |
+| SDK env vars | `DATABASE_URL`, `S3_*`, `MLFLOW_TRACKING_URI`, `QP_STRATEGY_ID`, `QP_AS_OF`, `QP_API_URL`, `QP_PLATFORM_DIR` | `PQ_*` prefix on all of them. `pq run` injects canonical `PQ_*` host URLs into the strategy subprocess so the user doesn't have to set anything; user-set `PQ_*` overrides. Worker container's docker-compose env is updated to match. |
+| SDK version | 0.2.0 | 0.3.0 (breaking CLI + env-var change) |
+
+The DATABASE_URL clash that triggered the rename: the strategy subprocess
+read `DATABASE_URL` from the user's shell, but on a real laptop that env
+is often already set for an unrelated project (e.g. SQLAlchemy app), and
+the rogue value broke the SDK. PQ-prefixed names are unique to this
+platform, so they don't collide with anything else the user has running.
 
 ## Pre-HIL fixes already landed (2026-04-24, 2026-04-25)
 

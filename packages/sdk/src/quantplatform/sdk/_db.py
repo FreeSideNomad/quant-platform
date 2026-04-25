@@ -1,6 +1,6 @@
 """Internal DB-connection helper shared by audit, run, data, lineage.
 
-Opens short-lived psycopg2 connections to Postgres using DATABASE_URL.
+Opens short-lived psycopg2 connections to Postgres using PQ_DATABASE_URL.
 No connection pooling at M3 — SDK calls are infrequent and per-run
 strategies are short-lived subprocesses.
 
@@ -19,9 +19,13 @@ import psycopg2.extras
 
 
 def _conn_url() -> str:
-    url = os.environ.get("DATABASE_URL", "")
+    url = os.environ.get("PQ_DATABASE_URL", "")
     if not url:
-        raise RuntimeError("DATABASE_URL is not set; SDK DB access needs it")
+        raise RuntimeError(
+            "PQ_DATABASE_URL is not set. SDK runs are normally launched by "
+            "`pq run`, which injects platform env vars automatically. If you "
+            "are running the strategy directly, export PQ_DATABASE_URL first."
+        )
     # Alembic/SQLAlchemy use `+psycopg2`; raw psycopg2 wants plain `postgresql://`
     return url.replace("+asyncpg", "").replace("+psycopg2", "")
 

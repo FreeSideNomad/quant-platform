@@ -2,7 +2,9 @@
 
 Spins up a tembo pg16-pgmq testcontainer once per module, runs alembic
 upgrade head (using the api package's alembic config), yields a
-DATABASE_URL for the test body.
+PQ_DATABASE_URL for the test body. The api's alembic migrations still
+read DATABASE_URL (separate env, separate process), so we set both for
+the alembic subprocess but only PQ_DATABASE_URL for the SDK under test.
 """
 from __future__ import annotations
 
@@ -40,5 +42,5 @@ def migrated_db_url(postgres_container: PostgresContainer) -> str:
 
 @pytest.fixture
 def db_url_env(migrated_db_url: str, monkeypatch: pytest.MonkeyPatch) -> str:
-    monkeypatch.setenv("DATABASE_URL", migrated_db_url)
+    monkeypatch.setenv("PQ_DATABASE_URL", migrated_db_url)
     return migrated_db_url

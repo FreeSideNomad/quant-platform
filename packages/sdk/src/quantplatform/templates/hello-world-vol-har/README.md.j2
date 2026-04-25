@@ -5,8 +5,8 @@
 ## Quickstart
 
 ```bash
-# From the project directory, with the platform stack already up (`pq up` in the quant-platform repo):
-pq run {{ name }}
+# Make sure the platform stack is up (`pq up`), then from this directory:
+pq run
 ```
 
 ## What it does
@@ -18,9 +18,9 @@ pq run {{ name }}
 
 ## Develop
 
-- `pq run {{ name }}` — train + log to MLflow (no promotion gate in M3).
-- `pq run {{ name }} --debug` — waits for a debugger to attach.
-- `pq run {{ name }} --container` — same, inside the worker container.
+- `pq run` — train + log to MLflow (no promotion gate in M3).
+- `pq run --debug` — waits for a debugger to attach.
+- `pq run --container` — same, inside the worker container.
 - `pq e2e` — full pre-push check: ruff + pyright + pytest + container run.
 
 Thresholds are declared in `pq.toml` but are advisory in M3; M4 wires

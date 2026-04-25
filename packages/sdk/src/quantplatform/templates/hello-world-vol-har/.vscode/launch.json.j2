@@ -7,13 +7,13 @@
       "request": "launch",
       "module": "{{ name.replace('-', '_') }}.strategy",
       "env": {
-        "QP_STRATEGY_ID": "${input:strategyId}",
-        "QP_AS_OF": "${input:asOf}",
-        "DATABASE_URL": "postgresql://qp:qp@localhost:15432/qp",
-        "MLFLOW_TRACKING_URI": "http://localhost:15000",
-        "S3_ENDPOINT_URL": "http://localhost:19000",
-        "S3_ACCESS_KEY": "minioadmin",
-        "S3_SECRET_KEY": "minioadmin"
+        "PQ_STRATEGY_ID": "${input:strategyId}",
+        "PQ_AS_OF": "${input:asOf}",
+        "PQ_DATABASE_URL": "postgresql://qp:qp@localhost:15432/qp",
+        "PQ_MLFLOW_TRACKING_URI": "http://localhost:15000",
+        "PQ_S3_ENDPOINT_URL": "http://localhost:19000",
+        "PQ_S3_ACCESS_KEY": "minioadmin",
+        "PQ_S3_SECRET_KEY": "minioadmin"
       },
       "justMyCode": false
     },

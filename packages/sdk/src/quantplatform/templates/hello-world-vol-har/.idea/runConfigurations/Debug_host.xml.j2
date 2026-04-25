@@ -3,11 +3,11 @@
     <module name="{{ name }}" />
     <option name="SCRIPT_NAME" value="$PROJECT_DIR$/src/{{ name.replace('-', '_') }}/strategy.py" />
     <envs>
-      <env name="DATABASE_URL" value="postgresql://qp:qp@localhost:15432/qp" />
-      <env name="MLFLOW_TRACKING_URI" value="http://localhost:15000" />
-      <env name="S3_ENDPOINT_URL" value="http://localhost:19000" />
-      <env name="S3_ACCESS_KEY" value="minioadmin" />
-      <env name="S3_SECRET_KEY" value="minioadmin" />
+      <env name="PQ_DATABASE_URL" value="postgresql://qp:qp@localhost:15432/qp" />
+      <env name="PQ_MLFLOW_TRACKING_URI" value="http://localhost:15000" />
+      <env name="PQ_S3_ENDPOINT_URL" value="http://localhost:19000" />
+      <env name="PQ_S3_ACCESS_KEY" value="minioadmin" />
+      <env name="PQ_S3_SECRET_KEY" value="minioadmin" />
     </envs>
   </configuration>
 </component>

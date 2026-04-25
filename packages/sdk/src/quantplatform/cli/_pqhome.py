@@ -82,11 +82,11 @@ def save_config(data: dict[str, Any]) -> None:
 def get_platform_dir() -> Path | None:
     """Resolve the platform repo root.
 
-    Priority: env QP_PLATFORM_DIR > ~/.pq/config.toml [platform] dir.
+    Priority: env PQ_PLATFORM_DIR > ~/.pq/config.toml [platform] dir.
     Returns None if neither is set. Does NOT validate the path exists —
     callers should and surface a useful error.
     """
-    env = os.environ.get("QP_PLATFORM_DIR")
+    env = os.environ.get("PQ_PLATFORM_DIR")
     if env:
         return Path(env).expanduser()
     cfg = load_config()
@@ -102,7 +102,7 @@ def require_platform_dir() -> Path:
     if p is None:
         raise RuntimeError(
             "platform directory not configured. Run `pq init` from the "
-            "quant-platform repo root, or set QP_PLATFORM_DIR=/abs/path."
+            "quant-platform repo root, or set PQ_PLATFORM_DIR=/abs/path."
         )
     if not (p / "docker-compose.yml").is_file():
         raise RuntimeError(

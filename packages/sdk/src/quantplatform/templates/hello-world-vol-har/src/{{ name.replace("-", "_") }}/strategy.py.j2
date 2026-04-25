@@ -48,8 +48,8 @@ def main() -> None:
     import os
 
     with run.start(
-        strategy_id=os.environ["QP_STRATEGY_ID"],
-        as_of=os.environ.get("QP_AS_OF"),
+        strategy_id=os.environ["PQ_STRATEGY_ID"],
+        as_of=os.environ.get("PQ_AS_OF"),
     ):
         df = data.ohlcv(ticker="SPY")
         VolHAR().train_and_validate(df)
