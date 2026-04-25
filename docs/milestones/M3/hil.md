@@ -24,22 +24,45 @@ What did NOT land (deliberately):
 
 ## Prerequisites
 
-- Repo on `main` at the M3 merge SHA (or on `feat/m3-sdk-local-runs` pre-merge)
-- Python 3.12+, `uv` installed
+- Python 3.12+
 - Docker Desktop (or equivalent) running
 - Ports 14444, 15000, 15173, 15432, 18000, 19000, 19001, 5678 free
+- Network access to GitHub + `pyquant.io`
+
+## Install
+
+One command. Self-contained — installs uv (if missing), clones the
+platform into `~/.pq/platform`, installs `pq` from that clone, runs
+`pq init` automatically. Re-running upgrades to latest `main`.
 
 ```bash
-# From a fresh clone (repo is public; `git clone https://...` also works):
-git clone --branch feat/m3-sdk-local-runs git@github.com:FreeSideNomad/quant-platform.git /tmp/m3-hil
-cd /tmp/m3-hil
-uv tool install ./packages/sdk
-pq --version          # → pq 0.2.0
+curl -fsSL https://pyquant.io/install.sh | bash       # macOS / Linux
+irm   https://pyquant.io/install.ps1 | iex            # Windows
 ```
 
-If `uv tool install` complains `Permission denied` while symlinking to
+Expected last lines:
+
+```
+✔ pq 0.2.0 installed.
+  Platform: /Users/<you>/.pq/platform
+  Run `pq --help` to get started.
+```
+
+If `uv tool install` errors with `Permission denied` symlinking to
 `~/.local/bin/pq`, that directory is root-owned on your machine; fix
-with `sudo chown -R $(whoami) ~/.local/bin`, then rerun the install.
+with `sudo chown -R $(whoami) ~/.local/bin`, then re-run the installer.
+
+### Testing-policy note
+
+Until M-something-late ships, `https://pyquant.io/install.sh` always
+points at HEAD of `main`. We keep `main` honest by running HIL against
+it directly — anything that breaks `main` is fixed forward, no
+release branch.
+
+After v1 ships and real users depend on `install.sh`, the HIL endpoint
+moves to `https://pyquant.io/install-test.sh` (which tracks a
+`pre-release` branch or similar), and `install.sh` only flips to that
+branch's tip after sign-off.
 
 ## Script (target 30 min)
 
@@ -47,16 +70,17 @@ with `sudo chown -R $(whoami) ~/.local/bin`, then rerun the install.
 
 2. **`pq up`** — stack boots with all services healthy (postgres, minio, mlflow, mock-oidc, api, ui, migrations exited(0)). Budget <90s warm.
 
-3. **`pq new strategy m3-hello`** — inspect the scaffolded tree:
+3. **`cd /tmp && pq new strategy m3-hello`** (or any cwd you like —
+   `pq new` doesn't depend on the platform repo). Inspect the
+   scaffolded tree:
    - `m3-hello/pq.toml` with `project.name = "m3-hello"`, `project.entry = "m3_hello.strategy:main"`
    - `m3-hello/src/m3_hello/strategy.py` (note underscored directory)
    - `m3-hello/tests/test_strategy.py`, `.vscode/launch.json`, `.idea/runConfigurations/`, `.pre-commit-config.yaml`, `.githooks/pre-push`, `README.md`
    - Confirm the strategy.py is under 40 lines of user-visible code.
 
-4. **`cd m3-hello && uv sync`** — resolves `quantplatform` from the
-   public GitHub repo on the `feat/m3-sdk-local-runs` branch (the
-   template's ref flips to `@main` at M3-merge; switches to plain
-   `"quantplatform"` PyPI dep at M8). Expect <5s on a warm cache.
+4. **`cd m3-hello && uv sync`** — resolves `quantplatform` from
+   `git+https://github.com/FreeSideNomad/quant-platform.git@main` and
+   pins it in the project's `uv.lock`. Expect <5s on a warm cache.
 
 5. **`pq run m3-hello`** — host-mode run. Watch the console for:
    - `Upserting strategy 'm3-hello'...` → `Strategy created: m3-hello (<prefix>)`
@@ -97,10 +121,10 @@ with `sudo chown -R $(whoami) ~/.local/bin`, then rerun the install.
 - **Is the 90s `pq e2e` budget actually hit on first vs warm run?** Record the times. If warm >90s, flag as a spec concern.
 - **Is the scaffolded project's first `uv sync` reasonable for a quant new to the stack?** The scaffold now resolves `quantplatform` straight from the public GitHub repo with no hand-editing — timing should be <5s on warm cache, <30s cold. Flag if the UX feels wrong for a first-time quant.
 
-## Pre-HIL fixes already landed (2026-04-24)
+## Pre-HIL fixes already landed (2026-04-24, 2026-04-25)
 
-Three scaffolding defects surfaced during the pre-HIL critical review
-were fixed on the branch before this sign-off:
+Defects surfaced during the pre-HIL critical review were fixed on
+`main` before this sign-off:
 
 | # | Finding | Fix commit |
 |---|---|---|
@@ -109,6 +133,12 @@ were fixed on the branch before this sign-off:
 | 3 | `mlflow-skinny` unpinned → resolved to 3.x, incompatible with compose's MLflow 2.16 | `cad17b5` (pinned `>=2.16,<3.0` in SDK prod deps) |
 | 4 | Scaffolded `strategy.py` / `test_strategy.py` failed `ruff format --check` → `pq e2e` fatal | `d9a53fc` (reformatted both templates to ruff-canonical layout); SDK version bumped 0.1.0 → 0.2.0 so fresh `uv tool install` picks up the update |
 | 5 | `pq --version` reported `0.1.0` after the pyproject bump — Python `__version__` was out of sync | `12b3d9f` aligns `quantplatform.__version__` with the pyproject version |
+| 6 | `dataset_versions.content_hash` stuck at zero placeholder | `47cd059` migration hard-codes the bundled parquet's xxh64 + new test_bundled_dataset.py guards drift |
+| 7 | `pq up` cached old api image → migration changes didn't land | `12756f4` adds `--build` by default; `--no-build` opts out |
+| 8 | `pq doctor` from non-platform cwd reported false-FAIL on busy ports | `2bd0aad` detects stack via `docker ps --filter name=pq-` instead of `docker compose ps -q` |
+| 9 | `pq up` cross-clone container_name conflicts (`/pq-mock-oidc` already in use) | `e35d868` sweeps stopped pq-* orphans before compose up |
+| 10 | `pq up` / `pq down` / `pq run --container` required cwd to be the platform repo root | `fc2bfac` ships `pq init` + `~/.pq/config.toml`; commands resolve via `require_platform_dir()` |
+| 11 | Install was multi-step (clone, `uv tool install`, `pq init`) | pyquant-site `b88e28e` ships self-contained `install.sh` / `install.ps1` that does all three |
 
 ## Non-fatal warnings you will see (acceptable for M3)
 
