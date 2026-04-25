@@ -13,11 +13,26 @@ from typing import Any
 
 import mlflow
 import numpy as np
+import pandas as pd
 import polars as pl
 
+from quantplatform.sdk._config import apply_mlflow_s3_env
 from quantplatform.sdk.audit import emit_event
 from quantplatform.sdk.run import current_run_id
 from quantplatform.validation.walk_forward import WalkForwardConfig, fold_dates
+
+
+def _pl_to_pd(df: pl.DataFrame) -> pd.DataFrame:
+    """Polars -> pandas without pyarrow.
+
+    `polars.DataFrame.to_pandas()` always goes through pyarrow (see
+    `polars/dataframe/frame.py`'s `_to_pandas_without_object_columns`),
+    which would force a ~50MB transitive dep on every quantplatform
+    install just for sklearn/LightGBM feature-name preservation. The
+    manual column-by-column copy below is enough for numeric feature
+    matrices, which is all this code path ever sees.
+    """
+    return pd.DataFrame({c: df[c].to_numpy() for c in df.columns})
 
 
 DEFAULT_WF_CONFIG = WalkForwardConfig(
@@ -99,10 +114,14 @@ class Strategy(ABC):
         # Feature columns = everything except `date` and `_y`
         feature_cols = [c for c in aligned.columns if c not in {"date", "_y"}]
 
-        # Connect to MLflow
+        # Connect to MLflow + translate PQ_S3_* into the AWS_*/MLFLOW_S3
+        # env vars boto3 reads. Done together because every MLflow run
+        # logs an artifact at the end, which uses the S3 client; if the
+        # shim runs late, log_model raises NoCredentialsError.
         mlflow.set_tracking_uri(
             os.environ.get("PQ_MLFLOW_TRACKING_URI", "http://localhost:15000")
         )
+        apply_mlflow_s3_env()
         experiment_name = f"quant-platform/{self.name}"
         mlflow.set_experiment(experiment_name)
 
@@ -131,9 +150,9 @@ class Strategy(ABC):
                 # Convert via pandas so sklearn/LightGBM can capture feature
                 # names on fit AND see them on predict — otherwise sklearn
                 # logs "X does not have valid feature names" each fold.
-                X_train = train_slice.select(feature_cols).to_pandas()
+                X_train = _pl_to_pd(train_slice.select(feature_cols))
                 y_train = train_slice["_y"].to_numpy()
-                X_test = test_slice.select(feature_cols).to_pandas()
+                X_test = _pl_to_pd(test_slice.select(feature_cols))
                 y_test = test_slice["_y"].to_numpy()
 
                 estimator.fit(X_train, y_train)
@@ -152,7 +171,7 @@ class Strategy(ABC):
             mlflow.log_metric("std_rmse", std_rmse)
 
             # Fit final model on the full aligned dataset for pyfunc packaging
-            X_full = aligned.select(feature_cols).to_pandas()
+            X_full = _pl_to_pd(aligned.select(feature_cols))
             y_full = aligned["_y"].to_numpy()
             final_model = self.model()
             final_model.fit(X_full, y_full)
@@ -165,13 +184,17 @@ class Strategy(ABC):
             _feature_cols = feature_cols
 
             class _PyFuncWrapper(_mlflow_pyfunc.PythonModel):
-                # No type hint on model_input: MLflow's schema-from-type-hint
-                # inference wants `list[pl.DataFrame]` (it assumes batched
-                # input). Without the hint MLflow leaves schema inference to
-                # an explicit input_example, which the strategy may add later.
-                def predict(self, context, model_input):  # type: ignore[override]
-                    feats = _strategy.features(model_input)
-                    X = feats.select(_feature_cols).to_pandas()
+                # MLflow 2.x calls predict with a list of input batches
+                # so it can fan out to a remote serving backend. We accept
+                # the list and operate on the first (only) batch, which
+                # keeps the user's strategy-side `features()` contract a
+                # single DataFrame in / single ndarray out.
+                def predict(
+                    self, context: Any, model_input: list[pl.DataFrame]
+                ) -> np.ndarray:
+                    batch = model_input[0]
+                    feats = _strategy.features(batch)
+                    X = _pl_to_pd(feats.select(_feature_cols))
                     return _strategy._fitted_model.predict(X)
 
             _mlflow_pyfunc.log_model(

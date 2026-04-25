@@ -123,7 +123,13 @@ def up(
         return
 
     _clean_stale_pq_containers()
-    cmd = ["docker", "compose", "up", "-d"]
+    # `--wait` blocks until every service that declares a healthcheck is
+    # healthy (and exits non-zero on timeout). Without it, `up -d`
+    # returns as soon as containers are *created*, which means we'd
+    # report success while pq-postgres / pq-mlflow are still flapping —
+    # `pq run` then fails in confusing ways. Quiet mode + healthcheck
+    # gating belong together.
+    cmd = ["docker", "compose", "up", "-d", "--wait"]
     if not no_build:
         cmd.append("--build")
 

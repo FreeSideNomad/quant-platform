@@ -127,6 +127,48 @@ branch's tip after sign-off.
 - **Is the 90s `pq e2e` budget actually hit on first vs warm run?** Record the times. If warm >90s, flag as a spec concern.
 - **Is the scaffolded project's first `uv sync` reasonable for a quant new to the stack?** The scaffold now resolves `quantplatform` straight from the public GitHub repo with no hand-editing — timing should be <5s on warm cache, <30s cold. Flag if the UX feels wrong for a first-time quant.
 
+## Corrections to recent commit explanations (2026-04-25)
+
+A code review on 2026-04-25 caught two commit messages that mis-stated
+what the underlying defect was. Recording the actual technical reasons
+here so they don't rot in git history:
+
+**`18942bd` (v0.3.1)** — "pass DataFrames into LightGBM .fit/.predict
+to drop sklearn warning". The commit said the lightgbm sklearn wrapper
+"captured names from the polars DataFrame's column metadata via some
+path in lightgbm 4.x's input handling." That is wrong. LightGBM never
+sees polars metadata. What actually happens: even with `numpy` arrays
+on both sides, `LGBMRegressor.fit(X)` synthesizes `Column_0..N` names
+and sets `feature_names_in_` from them; `LGBMRegressor.predict(X)`
+then triggers sklearn's `_check_feature_names` which warns because the
+predict numpy array has no names to match. Going through pandas (with
+real column names from the polars schema) is the correct fix; it also
+gives the saved model real feature names instead of `Column_N`.
+
+**`cc6de01` (v0.3.2)** — "drop pyfunc type hint to silence MLflow
+warning". The commit framed this as silencing a yellow warning. It
+was actually silencing a hard `MlflowException`: MLflow 2.22's
+`_get_func_info_if_type_hint_supported` raises when the hint isn't
+`list[<DataFrame>]`. Removing the hint is one valid path, but the
+proper long-term shape is `model_input: list[pl.DataFrame]` with the
+implementation unwrapping `model_input[0]` — that's what M6 serving
+will assume when fanning out batched inference. Done in v0.3.3.
+
+**`cc6de01` AWS_*/MLFLOW_S3 injection** — silently overrode any
+pre-existing `AWS_ACCESS_KEY_ID` in the user's shell with `minioadmin`.
+Functionally correct (the strategy subprocess must talk to MinIO, not
+real AWS) but no warning, no documented surface. v0.3.3 moves the
+translation into the SDK (`apply_mlflow_s3_env()` in `sdk/_config.py`):
+public surface is `PQ_S3_*` only, and the shim logs a warning when it
+shadows a non-matching pre-existing AWS_* value. The CLI's
+`PLATFORM_ENV` no longer carries any AWS_* keys.
+
+**`9085e49` `pq up`** — quieted to one line, but the underlying
+`docker compose up -d` returns success on container creation, not on
+healthcheck pass. `pq run` would then fail in confusing ways if a
+service was still flapping. v0.3.3 adds `--wait` so the success
+message only fires after every health-checked service is healthy.
+
 ## CLI UX overhaul (2026-04-23)
 
 Triggered by feedback during the in-progress HIL run. Behaviour changes:

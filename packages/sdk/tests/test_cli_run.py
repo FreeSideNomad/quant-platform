@@ -71,12 +71,17 @@ def test_pq_run_upserts_strategy_and_spawns_subprocess(runner: CliRunner, tmp_pa
     assert env["PQ_DATABASE_URL"].startswith("postgresql://")
     assert env["PQ_S3_ENDPOINT_URL"].startswith("http://")
     assert env["PQ_MLFLOW_TRACKING_URI"].startswith("http://")
-    # MLflow's S3 artifact store + boto3 read these directly — they can't
-    # be PQ_-renamed. Force-pinned to MinIO so a strategy run never talks
-    # to real AWS using day-job credentials.
-    assert env["AWS_ACCESS_KEY_ID"] == "minioadmin"
-    assert env["AWS_SECRET_ACCESS_KEY"] == "minioadmin"
-    assert env["MLFLOW_S3_ENDPOINT_URL"] == "http://localhost:19000"
+    # CLI deliberately does NOT inject AWS_*/MLFLOW_S3_ENDPOINT_URL —
+    # that translation belongs to the SDK's apply_mlflow_s3_env() shim,
+    # which warns when it shadows a pre-existing user value. The CLI env
+    # may still pass through AWS_* values inherited from os.environ
+    # (don't strip the user's shell), but it must not synthesize new ones.
+    cli_added_keys = set(env) - set(os.environ) - {
+        "PQ_STRATEGY_ID", "PQ_AS_OF",
+        "PQ_DATABASE_URL", "PQ_S3_ENDPOINT_URL", "PQ_S3_ACCESS_KEY",
+        "PQ_S3_SECRET_KEY", "PQ_MLFLOW_TRACKING_URI", "PQ_API_URL",
+    }
+    assert cli_added_keys == set(), f"CLI added unexpected env keys: {cli_added_keys}"
 
 
 def test_pq_run_no_args_uses_cwd_project(runner: CliRunner, tmp_path: Path) -> None:

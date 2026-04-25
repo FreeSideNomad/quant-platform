@@ -26,6 +26,12 @@ console = Console()
 # what `pq up` exposes. All keys are PQ_-prefixed to avoid clashing with
 # any DATABASE_URL / S3_* / MLFLOW_TRACKING_URI the user may have in their
 # shell for unrelated work. Ports match the spec-codified host bindings.
+#
+# The PQ_S3_* values are the SOLE user-facing surface; the SDK shim in
+# `quantplatform.sdk._config.apply_mlflow_s3_env()` translates them into
+# the AWS_*/MLFLOW_S3_ENDPOINT_URL env vars boto3/MLflow read directly,
+# at the moment a run starts. CLI never injects AWS_*; that translation
+# is the SDK's job, with a warning when it shadows existing AWS_* values.
 PLATFORM_ENV = {
     "PQ_DATABASE_URL": "postgresql://qp:qp@localhost:15432/qp",
     "PQ_S3_ENDPOINT_URL": "http://localhost:19000",
@@ -33,17 +39,6 @@ PLATFORM_ENV = {
     "PQ_S3_SECRET_KEY": "minioadmin",
     "PQ_MLFLOW_TRACKING_URI": "http://localhost:15000",
     "PQ_API_URL": "http://localhost:18000",
-}
-
-# Env vars that MLflow's S3 artifact store + boto3 read directly. We can't
-# rename these — they're third-party. Always force them to point at the
-# local MinIO so a strategy run never accidentally talks to real AWS using
-# the user's day-job credentials. Applied AFTER os.environ in the merge so
-# they always win, unlike PQ_* (which the user can override).
-MLFLOW_S3_ENV = {
-    "AWS_ACCESS_KEY_ID": "minioadmin",
-    "AWS_SECRET_ACCESS_KEY": "minioadmin",
-    "MLFLOW_S3_ENDPOINT_URL": "http://localhost:19000",
 }
 
 
@@ -257,7 +252,6 @@ def run(
     env = {
         **PLATFORM_ENV,
         **os.environ,
-        **MLFLOW_S3_ENV,
         "PQ_STRATEGY_ID": strategy_id,
         "PQ_AS_OF": as_of_str,
     }
