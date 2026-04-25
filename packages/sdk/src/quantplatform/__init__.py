@@ -1,5 +1,5 @@
 """Quant Platform SDK."""
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 from quantplatform.sdk import data, run
 from quantplatform.sdk.strategy import Strategy
